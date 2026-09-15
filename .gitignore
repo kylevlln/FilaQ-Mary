@@ -1,0 +1,15 @@
+# Logs
+/logs/
+*.log
+
+# OS / editor
+Thumbs.db
+.DS_Store
+.vscode/
+.idea/
+
+# Local server config
+.htaccess
+
+# Compiled / cache
+*.cache
