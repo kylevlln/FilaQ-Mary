@@ -14,53 +14,46 @@ if ($user['role'] !== 'CUSTOMER') {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Track my queue · FilaQ</title>
-<link rel="stylesheet" href="../assets/css/style.css?v=3">
+<link rel="stylesheet" href="../assets/css/style.css?v=4">
 </head>
-<body>
-<div class="blobs" aria-hidden="true"><div class="blob a"></div></div>
-<div class="dash">
-  <aside class="dash-side">
-    <a class="side-brand" href="index.php"><span class="dot"></span>FilaQ</a>
-    <span class="side-caption">Menu</span>
-    <a class="side-link" href="index.php"><span class="ic"><?php echo icon('ticket'); ?></span> Take a Number</a>
-    <a class="side-link active" href="track.php"><span class="ic"><?php echo icon('pin'); ?></span> Track Queue</a>
-    <a class="side-link" href="../display.php" target="_blank"><span class="ic"><?php echo icon('monitor'); ?></span> Live Board</a>
-    <div class="side-foot">
-      Signed in as <strong><?php echo e($user['username']); ?></strong><br>
-      <a href="../logout.php">Sign out</a>
-    </div>
-  </aside>
+<body class="standalone">
+<div class="standalone-head no-print">
+  <a class="brand" href="index.php"><span class="dot"></span>FilaQ</a>
+  <div class="links">
+    <a class="btn btn-ghost btn-sm" href="index.php">Take a number</a>
+    <a class="btn btn-ghost btn-sm" href="../display.php" target="_blank">Live board</a>
+    <a class="btn btn-ghost btn-sm" href="../logout.php">Sign out</a>
+  </div>
+</div>
 
-  <main class="dash-main">
-    <div class="dash-top">
-      <div><h1>Track my queue</h1><p class="sub">Enter the tracking code printed on your ticket.</p></div>
+<main class="cust-main">
+  <div class="track-wrap">
+    <div class="page-head">
+      <div>
+        <p class="page-kicker">Track my queue</p>
+        <h1 class="page-title">Where am I in line?</h1>
+        <p class="page-lead">Enter the tracking code printed on your ticket.</p>
+      </div>
     </div>
 
-    <div class="card" style="max-width:520px;">
+    <div class="panel" style="background:var(--surface-2);">
       <form id="track-form" class="row" style="align-items:flex-start;">
         <div class="field flex-1" style="margin-bottom:0;">
           <label for="code">Tracking code</label>
           <input class="input" type="text" id="code" name="code" placeholder="e.g. 4F6A2B81" maxlength="12" style="text-transform:uppercase;" required>
           <span class="input-error"></span>
         </div>
-        <button class="btn btn-primary" type="submit" style="margin-top:1.6rem;">Check</button>
+        <button class="btn btn-primary" type="submit" style="margin-top:1.55rem;">Check</button>
       </form>
     </div>
 
-    <div id="result" style="margin-top:1.6rem;"></div>
-  </main>
-</div>
+    <div id="result"></div>
+  </div>
+</main>
 
-<script src="../assets/js/main.js?v=2"></script>
+<script src="../assets/js/main.js?v=3"></script>
 <script>
-const STAGES = {
-  WAITING:   0,
-  CALLED:    1,
-  SERVING:   2,
-  COMPLETED: 3,
-  SKIPPED:   3,
-  CANCELLED: 0
-};
+const STAGES = { WAITING: 0, CALLED: 1, SERVING: 2, COMPLETED: 3, SKIPPED: 3, CANCELLED: 0 };
 
 const form = document.getElementById('track-form');
 form.addEventListener('submit', async (e) => {
@@ -68,57 +61,84 @@ form.addEventListener('submit', async (e) => {
   const code = document.getElementById('code').value.trim().toUpperCase();
   if (!code) { toast('Please enter your tracking code.', 'warn'); return; }
   const zone = document.getElementById('result');
-  zone.innerHTML = '<div class="skeleton" style="height:180px; border-radius:var(--r-md);"></div>';
+  zone.innerHTML = '<div class="skeleton" style="height:220px; border-radius:var(--r-lg);"></div>';
   try {
     const d = await api('../api/queue.php?action=track&code=' + encodeURIComponent(code));
     render(d.data);
-    setTimeout(playDing, 0);
   } catch (err) {
-    zone.innerHTML = `<div class="alert alert-warn">${escapeHtml(err.message)}</div>`;
+    zone.innerHTML = `<div class="alert alert-warn" role="alert">${escapeHtml(err.message)}</div>`;
   }
 });
+
+function stateMeta(t) {
+  const sub = Math.max(0, t.remaining_wait_min);
+  const pos = Math.max(1, t.position + 1);
+  switch (t.status) {
+    case 'WAITING':
+      return { title: `You are #${pos} in line`, text: `Approximately ~${sub} min to your turn`, icon: 'clock', tone: 'warn' };
+    case 'CALLED':
+      return { title: 'Your number was called', text: 'Please proceed to the counter now.', icon: 'bell', tone: 'teal' };
+    case 'SERVING':
+      return { title: 'Now being served', text: t.service_name ? t.service_name : 'The counter has your number.', icon: 'check', tone: 'acc' };
+    case 'COMPLETED':
+      return { title: 'Served — thank you', text: 'Your transaction at this counter is complete.', icon: 'check', tone: 'ok' };
+    case 'SKIPPED':
+      return { title: 'This number was skipped', text: 'Please take a new number at the intake desk.', icon: 'alert', tone: 'bad' };
+    default:
+      return { title: t.status, text: '', icon: 'clock', tone: 'warn' };
+  }
+}
 
 function render(t) {
   const stage = STAGES[t.status] ?? 0;
   const isSkipped = t.status === 'SKIPPED';
-  const labels = ['Waiting', 'Called', 'Serving', 'Complete'];
+  const labels = ['Waiting', 'Called', 'Serving', 'Done'];
+  const done = (i) => (i < stage) || (isSkipped && i < 3);
   const steps = labels.map((lbl, i) => {
-    let cls = 'step';
-    if (i < stage || (isSkipped && i < 3)) cls += ' done';
-    else if (i === stage && !isSkipped) cls += ' current';
-    const circle = isSkipped && i === 3 ? `<span class="circle" style="background:var(--red); color:#fff;">${icon('x', 14)}</span>` : `<span class="circle">${i + 1}</span>`;
-    return `${circle}<span class="lbl">${lbl}</span>`;
+    const cls = isSkipped && (i === 3) ? 'skip' : done(i) ? 'done' : (i === stage ? 'current' : '');
+    const circle = isSkipped && i === 3
+      ? `<span class="circle">${icon('x', 16)}</span>`
+      : (i === stage && !isSkipped)
+        ? `<span class="circle">${i === 3 ? icon('check', 16) : ''}<span class="serif">${i + 1}</span></span>`
+        : `<span class="circle"><span class="serif">${i + 1}</span></span>`;
+    return `<div class="track-step ${cls}">${circle}<span class="lbl">${lbl}</span></div>`;
   });
-  const line = '<div class="step-line' + (stage >= 1 ? ' on' : '') + '"></div>';
-  const badge = `<span class="badge badge--${t.status.toLowerCase()}">${t.status}</span>`;
-  const etaLine = (t.status === 'WAITING')
-    ? `<p class="lead" style="margin:.4rem 0;">Approximately <strong class="serif" style="font-size:1.6rem; color:var(--sienna);">${Math.max(0, t.remaining_wait_min)} min</strong> to your turn (position ${Math.max(1, t.position + 1)} in line).</p>`
-    : '<p class="muted" style="margin:0;">Please head to the counter when your number is called.</p>';
 
+  const sm = stateMeta(t);
+  const badgeTone = t.status === 'SKIPPED' ? 'skipped' : t.status.toLowerCase();
   const zone = document.getElementById('result');
-  zone.classList.remove('fade-in'); void zone.offsetWidth; zone.classList.add('fade-in');
   zone.innerHTML = `
-    <div class="card" style="max-width:560px;">
-      <div class="row-between">
-        <div>
-          <span class="muted" style="font-size:.8rem;">Ticket</span>
-          <div class="serif" style="font-size:2rem; font-weight:700;">${escapeHtml(t.ticket_code)}</div>
-          <div class="muted" style="font-size:.95rem;"><strong style="color:var(--ink);">${escapeHtml(t.service_name)}</strong></div>
-        </div>
-        ${badge}
+    <div class="track-panel">
+      <p class="kicker center" style="margin-bottom:.6rem;">Your ticket</p>
+      <div class="track-code">${escapeHtml(t.ticket_code)}</div>
+      <div class="track-svc">${escapeHtml(t.service_name || 'Service')}</div>
+      <div class="track-state">
+        <span class="state" style="color:${t.status === 'SKIPPED' ? 'var(--rose)' : 'var(--acc)'}">
+          ${icon(sm.icon, 20)} ${escapeHtml(sm.title)}
+        </span>
+        <div class="help">${escapeHtml(sm.text)}</div>
       </div>
-      <div class="stepper">${steps.join(line)}</div>
-      <div class="center" style="text-align:center;">${isSkipped
-        ? '<p class="alert alert-warn" style="text-align:left;">This number was skipped. Please take a new number at the desk.</p>'
-        : etaLine}
+
+      <div class="track-facts">
+        <span class="track-fact"><span class="n">${escapeHtml(t.ticket_code.split('-')[1] || '—')}</span><span class="l">Your number</span></span>
+        ${(t.status === 'WAITING' || t.status === 'CALLED') ? `<span class="track-fact"><span class="n">${Math.max(1, Number(t.position) + 1)}</span><span class="l">In line</span></span>` : ''}
+        ${(t.status === 'WAITING') ? `<span class="track-fact"><span class="n">~${Math.max(0, t.remaining_wait_min)}</span><span class="l">Min to turn</span></span>` : ''}
+        <span class="track-fact"><span class="n">${escapeHtml(t.counter_name || '—')}</span><span class="l">Window</span></span>
       </div>
-      <div class="divider"></div>
-      <p class="muted center" style="font-size:.85rem;">Issued ${new Date(t.issued_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
-    </div>
-    <div class="row" style="justify-content:center; margin-top:1rem; flex-wrap:wrap;">
-      <a class="btn btn-ghost btn-sm" href="index.php">Take a new number</a>
-      <a class="btn btn-cool btn-sm" href="../display.php" target="_blank">Live board</a>
+
+      <div class="track-steps">${steps.join('')}</div>
+
+      <div class="divider" style="margin:1.2rem 0;"></div>
+      <p class="muted" style="font-size:var(--fs-sm); margin:0;">
+        Issued ${new Date(t.issued_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} ·
+        check again to see if it is your turn
+      </p>
+      <div class="row" style="justify-content:center; margin-top:1.2rem; flex-wrap:wrap;">
+        <a class="btn btn-primary btn-sm" href="index.php">Take a new number</a>
+        <a class="btn btn-ghost btn-sm" href="../display.php" target="_blank">Watch the live board</a>
+      </div>
     </div>`;
+  zone.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 </script>
 </body>

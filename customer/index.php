@@ -10,6 +10,7 @@ if ($user['role'] !== 'CUSTOMER') {
 
 $services = fetch_all('SELECT id, name, description, avg_service_time_sec FROM services WHERE is_active = 1 ORDER BY name');
 $announcement = setting('announcement', '');
+$firstName = trim(explode(' ', $user['full_name'])[0]);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -17,76 +18,80 @@ $announcement = setting('announcement', '');
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Take a number · FilaQ</title>
-<link rel="stylesheet" href="../assets/css/style.css?v=3">
+<link rel="stylesheet" href="../assets/css/style.css?v=4">
 </head>
-<body>
-<div class="blobs" aria-hidden="true"><div class="blob a"></div></div>
-<div class="dash">
-  <aside class="dash-side">
-    <a class="side-brand" href="index.php"><span class="dot"></span>FilaQ</a>
-    <span class="side-caption">Menu</span>
-    <a class="side-link active" href="index.php"><span class="ic"><?php echo icon('ticket'); ?></span> Take a Number</a>
-    <a class="side-link" href="track.php"><span class="ic"><?php echo icon('pin'); ?></span> Track Queue</a>
-    <a class="side-link" href="../display.php" target="_blank"><span class="ic"><?php echo icon('monitor'); ?></span> Live Board</a>
-    <div class="side-foot">
-      Signed in as <strong><?php echo e($user['username']); ?></strong><br>
-      <a href="../logout.php">Sign out</a>
-    </div>
-  </aside>
+<body class="standalone">
+<div class="standalone-head no-print">
+  <a class="brand" href="index.php"><span class="dot"></span>FilaQ</a>
+  <div class="links">
+    <span class="muted" style="font-size:var(--fs-sm);">Hi, <?php echo e($firstName); ?></span>
+    <a class="btn btn-ghost btn-sm" href="track.php">Track queue</a>
+    <a class="btn btn-ghost btn-sm" href="../display.php" target="_blank">Live board</a>
+    <a class="btn btn-ghost btn-sm" href="../logout.php">Sign out</a>
+  </div>
+</div>
 
-  <main class="dash-main">
-    <div class="dash-top">
+<main class="cust-main">
+  <div class="cust-inner">
+    <div class="page-head">
       <div>
-        <h1>Hello, <?php echo e($user['full_name']); ?></h1>
-        <p class="sub">Take a number and we'll let you know when it's your turn.</p>
+        <p class="page-kicker">Take a number</p>
+        <h1 class="page-title">What did you come for?</h1>
+        <p class="page-lead">Choose a service and we will hand you a number, tell you the wait, and call you when it is your turn.</p>
       </div>
-      <a class="btn btn-ghost" href="track.php">Track my number →</a>
+      <div class="page-actions">
+        <a class="btn btn-ghost" href="track.php">Track my number</a>
+      </div>
     </div>
 
     <?php if ($announcement): ?>
-      <div class="alert alert-info"><?php echo e($announcement); ?></div>
+      <div class="alert alert-warn" role="note"><?php echo icon('alert', 18); ?><span><?php echo e($announcement); ?></span></div>
     <?php endif; ?>
 
     <?php if (!$services): ?>
-      <div class="card"><p class="empty">No services are available right now. Please check back shortly.</p></div>
+      <div class="panel empty-state">
+        <span class="empty-ic"><?php echo icon('alert', 22); ?></span>
+        <p class="empty-title">No services available right now</p>
+        <p class="empty-sub">The counters are closed for the moment. Please check back shortly.</p>
+      </div>
     <?php else: ?>
-      <div class="section-head"><h2>Choose a service</h2></div>
-      <div class="grid-2 stagger" id="services-grid">
+      <div class="svc-grid" id="services-grid">
         <?php foreach ($services as $s): ?>
-          <button class="card service-card" data-id="<?php echo (int) $s['id']; ?>" style="text-align:left; border:none; cursor:pointer; font-family:inherit;">
-            <h3 style="margin-bottom:.3rem;"><?php echo e($s['name']); ?></h3>
-            <p class="muted" style="font-size:.86rem;"><?php echo e($s['description'] ?: 'General service'); ?></p>
-            <p style="margin:0; font-size:.82rem; color:var(--aqua);">
-              Est. wait:
-              <strong class="wait-min" data-service="<?php echo (int) $s['id']; ?>">…</strong>
-            </p>
+          <button class="svc-card" data-id="<?php echo (int) $s['id']; ?>" type="button">
+            <span class="svc-ico"><?php echo icon('ticket', 20); ?></span>
+            <span class="svc-name"><?php echo e($s['name']); ?></span>
+            <span class="svc-note"><?php echo e($s['description'] ?: 'General service'); ?></span>
+            <span class="svc-meta">Est. wait: <strong class="wait-min" data-service="<?php echo (int) $s['id']; ?>">…</strong></span>
+            <span class="go"><?php echo icon('check', 18); ?></span>
           </button>
         <?php endforeach; ?>
       </div>
     <?php endif; ?>
 
-    <!-- Ticket result becomes visible after taking a number -->
-    <div id="ticket-area" style="display:none; margin-top:2rem;"></div>
+    <div id="ticket-area" style="display:none;" aria-live="polite"></div>
 
-    <!-- Live board preview -->
-    <div style="margin-top:2.5rem;">
-      <div class="section-head"><h2>What's happening now</h2><a class="btn btn-ghost btn-sm" href="../display.php" target="_blank">Open live board</a></div>
-      <div class="stats-row" id="live-stats">
-        <div class="stat-card"><span class="stat-label">Now serving</span><span class="stat-value" id="ls-now">—</span></div>
-        <div class="stat-card glow-cyan"><span class="stat-label">Ahead of you</span><span class="stat-value" id="ls-ahead">—</span></div>
-        <div class="stat-card glow-pink"><span class="stat-label">Waiting total</span><span class="stat-value" id="ls-waiting">—</span></div>
+    <section style="margin-top:2.5rem;" aria-label="What is happening now">
+      <div class="panel-head">
+        <h2 class="panel-title">What&rsquo;s happening now</h2>
+        <div class="row">
+          <span class="muted" style="font-size:var(--fs-sm);"><strong class="wait-total" id="ls-waiting">…</strong> waiting in line</span>
+          <a class="btn btn-ghost btn-sm" href="../display.php" target="_blank">Open live board</a>
+        </div>
       </div>
-    </div>
-  </main>
-</div>
+      <div class="now-mini" id="live-stats">
+        <div class="now-chip serving"><span class="role" id="ls-now">—</span><span class="who"><span class="at">Now serving</span><br>watch the board for your number</span></div>
+        <div class="now-chip next"><span class="role" id="ls-next">—</span><span class="who"><span class="at">Coming up next</span><br>one ticket after the current one</span></div>
+      </div>
+    </section>
+  </div>
+</main>
 
-<script src="../assets/js/main.js?v=2"></script>
+<script src="../assets/js/main.js?v=3"></script>
 <script>
 const svcGrid = document.getElementById('services-grid');
 
-// Take a ticket
 document.addEventListener('click', async (e) => {
-  const card = e.target.closest('.service-card');
+  const card = e.target.closest('.svc-card');
   if (!card) return;
   const id = card.dataset.id;
   card.disabled = true;
@@ -107,55 +112,57 @@ document.addEventListener('click', async (e) => {
   }
 });
 
-// Pretty ticket + tracking info
 function renderTicket(t) {
   const zone = document.getElementById('ticket-area');
-  const clicked = document.querySelector('.service-card[data-id="' + t.service_id + '"] h3');
+  const clicked = document.querySelector('.svc-card[data-id="' + t.service_id + '"] .svc-name');
   const serviceName = clicked ? clicked.textContent : 'Service';
   const eta = Math.max(1, Math.ceil(Number(t.estimated_wait_sec || 0) / 60));
 
   zone.style.display = 'block';
-  zone.classList.add('fade-in');
   zone.innerHTML = `
-    <div class="ticket-paper">
-      <div class="tick-head">
+    <div class="ticket" role="status" aria-label="Your ticket">
+      <div class="ticket-head">
         <span class="name">FilaQ</span>
-        <span>${escapeHtml(serviceName)}</span>
+        <span class="meta">Your ticket</span>
       </div>
-      <div class="tick-id">
-        <div class="code">${escapeHtml(t.ticket_code)}</div>
-        <div class="svc"><strong>${escapeHtml(t.service_name || (clicked ? clicked.textContent : 'Service'))}</strong></div>
-        <div class="svc-note">Your number. Keep this ticket.</div>
+      <div class="ticket-body">
+        <div class="ticket-code">${escapeHtml(t.ticket_code)}</div>
+        <div class="ticket-svc">${escapeHtml(t.service_name || serviceName)}</div>
+        <div class="ticket-note">Keep this number handy — the board will call you next.</div>
       </div>
-      <div class="tick-details">
-        <span>Tracking code</span><strong style="color:var(--sienna);">${escapeHtml(t.session_code)}</strong>
+      <div class="ticket-foot">
+        <span>Tracking code</span>
+        <strong>${escapeHtml(t.session_code)}</strong>
       </div>
-      <div class="tick-eta">
-        Estimated wait: <b>~${eta} minute${eta === 1 ? '' : 's'}</b>
+      <div class="ticket-foot">
+        <span>Estimated wait</span>
+        <strong class="t-eta">~${eta} minute${eta === 1 ? '' : 's'}</strong>
+      </div>
+      <div class="ticket-actions">
+        <a class="btn btn-primary" href="track.php">Track my number</a>
+        <button class="btn btn-ghost" type="button" onclick="location.reload()">Take another</button>
       </div>
     </div>
-    <p class="center muted" style="margin-top:1rem;">Save your tracking code <strong>${escapeHtml(t.session_code)}</strong>. You can check your exact position on the <a href="track.php">Track Queue</a> page.</p>`;
+    <p class="center muted" style="margin-top:1rem;">Save <strong>${escapeHtml(t.session_code)}</strong> — it is how you check your exact place on the <a href="track.php">Track Queue</a> page.</p>`;
   zone.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
-// Live briefing + per-service wait estimates, from a single `live` request.
 async function refreshLive() {
   try {
     const d = await api('../api/queue.php?action=live');
     const queues = d.data.queues || [];
     const waiting = queues.reduce((s, q) => s + Number(q.waiting || 0), 0);
 
-    // The live payload already carries the estimated wait per service, so the
-    // "Est. wait" labels on the service cards are updated in the same call.
     queues.forEach(q => {
       const el = document.querySelector(`.wait-min[data-service="${q.service_id}"]`);
       if (el) el.textContent = `~${q.est_wait_min} min`;
     });
 
-    const cur = d.data.now ? `${d.data.now.ticket_code || ''}${d.data.now.counter_name ? ' @ ' + d.data.now.counter_name : ''}`.trim() : '—';
-    document.getElementById('ls-now').textContent = cur;
     document.getElementById('ls-waiting').textContent = waiting;
-    document.getElementById('ls-ahead').textContent = waiting;
+
+    const n = d.data.now, u = (d.data.upcoming || [])[0];
+    document.getElementById('ls-now').textContent = n && n.ticket_code ? n.ticket_code : '—';
+    document.getElementById('ls-next').textContent = u ? u.ticket_code : '—';
   } catch (e) { /* ignore */ }
 }
 

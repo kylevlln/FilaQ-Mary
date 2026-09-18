@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/config/config.php';
+require_once __DIR__ . '/includes/icons.php';
 
 if (current_user() !== null) {
     redirect('index.php');
@@ -47,40 +48,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Sign in · <?php echo APP_NAME; ?></title>
-<link rel="stylesheet" href="assets/css/style.css?v=3">
+<link rel="stylesheet" href="assets/css/style.css?v=4">
 </head>
 <body>
-<div class="blobs" aria-hidden="true"><div class="blob a"></div></div>
-<div class="auth-wrap">
+<div class="auth-shell">
   <div class="auth-card">
-    <div class="brand">
-      <a href="index.php" style="text-decoration:none; color:inherit;"><h1><?php echo APP_NAME; ?></h1></a>
+    <div class="auth-brand">
+      <span class="dot" aria-hidden="true"></span>
+      <h1><?php echo APP_NAME; ?></h1>
       <p>Welcome back. Your number awaits.</p>
     </div>
 
-    <?php if ($error): ?><div class="alert alert-error"><?php echo e($error); ?></div><?php endif; ?>
+    <?php if ($error): ?>
+      <div class="alert alert-error" role="alert"><?php echo icon('alert', 18); ?><span><?php echo e($error); ?></span></div>
+    <?php endif; ?>
 
     <form method="post" action="login.php" novalidate id="login-form">
       <div class="field">
-        <label for="username">Username or Email</label>
-        <input class="input" type="text" id="username" name="username" value="<?php echo e($username); ?>" required autofocus>
-        <span class="input-error"></span>
+        <label for="username">Username or email</label>
+        <input class="input" type="text" id="username" name="username" value="<?php echo e($username); ?>" required autocomplete="username">
+        <span class="input-error" role="alert"></span>
       </div>
       <div class="field">
         <label for="password">Password</label>
-        <input class="input" type="password" id="password" name="password" required>
-        <span class="input-error"></span>
+        <input class="input" type="password" id="password" name="password" required autocomplete="current-password">
+        <span class="input-error" role="alert"></span>
       </div>
-      <button class="btn btn-primary btn-block btn-lg" type="submit">Sign In</button>
+      <button class="btn btn-primary btn-block btn-lg" type="submit">Sign in</button>
     </form>
 
-    <div style="text-align:center; margin-top:1.3rem; font-size:.9rem;">
-      New to FilaQ? <a href="register.php"><strong>Create an account</strong></a><br>
-      <span style="font-size:.82rem; color:var(--ink-soft);">Staff accounts require administrator approval.</span>
+    <div class="auth-switch">
+      New to FilaQ? <a href="register.php">Create an account</a>
+      <small>Staff accounts require administrator approval.</small>
     </div>
   </div>
 </div>
-<script src="assets/js/main.js?v=2"></script>
+<script src="assets/js/main.js?v=3"></script>
 <script>
 document.getElementById('login-form').addEventListener('submit', function (e) {
   const errors = validateForm(this);

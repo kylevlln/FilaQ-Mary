@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/config/config.php';
 require_once __DIR__ . '/includes/queue.php';
+require_once __DIR__ . '/includes/icons.php';
 
 if (current_user() !== null) {
     redirect('index.php');
@@ -71,39 +72,62 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Create your account · <?php echo APP_NAME; ?></title>
-<link rel="stylesheet" href="assets/css/style.css?v=3">
+<link rel="stylesheet" href="assets/css/style.css?v=4">
 </head>
 <body>
-<div class="blobs" aria-hidden="true"><div class="blob a"></div></div>
-<div class="auth-wrap">
-  <div class="auth-card" style="max-height:95vh; overflow-y:auto;">
-    <div class="brand">
-      <a href="index.php" style="text-decoration:none; color:inherit;"><h1><?php echo APP_NAME; ?></h1></a>
+<div class="auth-shell register-body">
+  <div class="auth-card">
+    <div class="auth-brand">
+      <span class="dot" aria-hidden="true"></span>
+      <h1>Create your account</h1>
       <p>Join the queue. It takes less than a minute.</p>
     </div>
 
-    <?php if ($error): ?><div class="alert alert-error"><?php echo e($error); ?></div><?php endif; ?>
+    <?php if ($error): ?>
+      <div class="alert alert-error" role="alert"><?php echo icon('alert', 18); ?><span><?php echo e($error); ?></span></div>
+    <?php endif; ?>
 
     <form method="post" action="register.php" novalidate id="reg-form">
+      <p class="fieldset-title">Account</p>
       <div class="field">
-        <label for="full_name">Full Name</label>
-        <input class="input<?php echo isset($errors['full_name']) ? ' is-error' : ''; ?>" type="text" id="full_name" name="full_name" value="<?php echo e($old['full_name']); ?>" required autofocus>
-        <span class="input-error" style="<?php echo isset($errors['full_name']) ? '' : 'display:none;'; ?>"><?php echo e($errors['full_name'] ?? ''); ?></span>
+        <label for="full_name">Full name</label>
+        <input class="input<?php echo isset($errors['full_name']) ? ' is-error' : ''; ?>" type="text" id="full_name" name="full_name" value="<?php echo e($old['full_name']); ?>" required autocomplete="name">
+        <span class="input-error" role="alert"><?php echo e($errors['full_name'] ?? ''); ?></span>
       </div>
-      <div class="field">
-        <label for="username">Username</label>
-        <input class="input<?php echo isset($errors['username']) ? ' is-error' : ''; ?>" type="text" id="username" name="username" value="<?php echo e($old['username']); ?>" required>
-        <span class="input-error" style="<?php echo isset($errors['username']) ? '' : 'display:none;'; ?>"><?php echo e($errors['username'] ?? ''); ?></span>
+      <div class="field-grid">
+        <div class="field">
+          <label for="username">Username</label>
+          <input class="input<?php echo isset($errors['username']) ? ' is-error' : ''; ?>" type="text" id="username" name="username" value="<?php echo e($old['username']); ?>" required autocomplete="username">
+          <span class="input-error" role="alert"><?php echo e($errors['username'] ?? ''); ?></span>
+        </div>
+        <div class="field">
+          <label for="phone">Phone <span class="opt">(optional)</span></label>
+          <input class="input" type="text" id="phone" name="phone" value="<?php echo e($old['phone']); ?>">
+        </div>
       </div>
+
+      <p class="fieldset-title">Contact</p>
       <div class="field">
         <label for="email">Email</label>
-        <input class="input<?php echo isset($errors['email']) ? ' is-error' : ''; ?>" type="email" id="email" name="email" value="<?php echo e($old['email']); ?>" required>
-        <span class="input-error" style="<?php echo isset($errors['email']) ? '' : 'display:none;'; ?>"><?php echo e($errors['email'] ?? ''); ?></span>
+        <input class="input<?php echo isset($errors['email']) ? ' is-error' : ''; ?>" type="email" id="email" name="email" value="<?php echo e($old['email']); ?>" required autocomplete="email">
+        <span class="input-error" role="alert"><?php echo e($errors['email'] ?? ''); ?></span>
       </div>
-      <div class="field">
-        <label for="phone">Phone <span style="font-weight:300;color:var(--ink-soft);">(optional)</span></label>
-        <input class="input" type="text" id="phone" name="phone" value="<?php echo e($old['phone']); ?>">
+
+      <p class="fieldset-title">Security</p>
+      <div class="field-grid">
+        <div class="field">
+          <label for="password">Password</label>
+          <input class="input<?php echo isset($errors['password']) ? ' is-error' : ''; ?>" type="password" id="password" name="password" required autocomplete="new-password">
+          <small>At least 6 characters.</small>
+          <span class="input-error" role="alert"><?php echo e($errors['password'] ?? ''); ?></span>
+        </div>
+        <div class="field">
+          <label for="password2">Confirm password</label>
+          <input class="input<?php echo isset($errors['password2']) ? ' is-error' : ''; ?>" type="password" id="password2" name="password2" required autocomplete="new-password">
+          <span class="input-error" role="alert"><?php echo e($errors['password2'] ?? ''); ?></span>
+        </div>
       </div>
+
       <div class="field">
         <label for="role">I am a…</label>
         <select class="input" id="role" name="role">
@@ -112,32 +136,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </select>
         <small>Staff accounts require administrator approval before they become active.</small>
       </div>
-      <div class="field">
-        <label for="password">Password</label>
-        <input class="input<?php echo isset($errors['password']) ? ' is-error' : ''; ?>" type="password" id="password" name="password" required>
-        <span class="input-error" style="<?php echo isset($errors['password']) ? '' : 'display:none;'; ?>"><?php echo e($errors['password'] ?? ''); ?></span>
-      </div>
-      <div class="field">
-        <label for="password2">Confirm Password</label>
-        <input class="input<?php echo isset($errors['password2']) ? ' is-error' : ''; ?>" type="password" id="password2" name="password2" required>
-        <span class="input-error" style="<?php echo isset($errors['password2']) ? '' : 'display:none;'; ?>"><?php echo e($errors['password2'] ?? ''); ?></span>
-      </div>
-      <button class="btn btn-primary btn-block btn-lg" type="submit">Create Account</button>
+
+      <button class="btn btn-primary btn-block btn-lg" type="submit">Create account</button>
     </form>
 
-    <div style="text-align:center; margin-top:1.3rem; font-size:.9rem;">
-      Already have an account? <a href="login.php"><strong>Sign in</strong></a>
-    </div>
-    <div style="text-align:center; margin-top:.4rem; font-size:.78rem; color:var(--ink-soft);">
-      By registering you agree to the <a href="terms.php">Terms of Service</a> and <a href="privacy.php">Privacy Policy</a>.
+    <div class="auth-switch">
+      Already have an account? <a href="login.php">Sign in</a>
+      <small>By registering you agree to the <a href="terms.php">Terms of Service</a> and <a href="privacy.php">Privacy Policy</a>.</small>
     </div>
   </div>
 </div>
-<script src="assets/js/main.js?v=2"></script>
+<script src="assets/js/main.js?v=3"></script>
 <script>
 document.getElementById('reg-form').addEventListener('submit', function (e) {
   const errs = validateForm(this);
-  // Additional password check
   const p = this.querySelector('[name="password"]');
   const p2 = this.querySelector('[name="password2"]');
   if (p && p2 && p.value && p.value !== p2.value) errs[p2.name] = 'Passwords do not match.';
