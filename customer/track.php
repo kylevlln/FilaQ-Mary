@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/../config/config.php';
 require_once __DIR__ . '/../includes/queue.php';
+require_once __DIR__ . '/../includes/icons.php';
 
 $user = require_login();
 if ($user['role'] !== 'CUSTOMER') {
@@ -12,18 +13,18 @@ if ($user['role'] !== 'CUSTOMER') {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Track My Queue — FilaQ</title>
-<link rel="stylesheet" href="../assets/css/style.css">
+<title>Track my queue · FilaQ</title>
+<link rel="stylesheet" href="../assets/css/style.css?v=3">
 </head>
 <body>
-<div class="blobs" aria-hidden="true"><div class="blob a"></div><div class="blob b"></div><div class="blob c"></div></div>
+<div class="blobs" aria-hidden="true"><div class="blob a"></div></div>
 <div class="dash">
   <aside class="dash-side">
     <a class="side-brand" href="index.php"><span class="dot"></span>FilaQ</a>
     <span class="side-caption">Menu</span>
-    <a class="side-link" href="index.php"><span class="ic">🎟️</span> Take a Number</a>
-    <a class="side-link active" href="track.php"><span class="ic">📍</span> Track Queue</a>
-    <a class="side-link" href="../display.php" target="_blank"><span class="ic">🖥️</span> Live Board</a>
+    <a class="side-link" href="index.php"><span class="ic"><?php echo icon('ticket'); ?></span> Take a Number</a>
+    <a class="side-link active" href="track.php"><span class="ic"><?php echo icon('pin'); ?></span> Track Queue</a>
+    <a class="side-link" href="../display.php" target="_blank"><span class="ic"><?php echo icon('monitor'); ?></span> Live Board</a>
     <div class="side-foot">
       Signed in as <strong><?php echo e($user['username']); ?></strong><br>
       <a href="../logout.php">Sign out</a>
@@ -50,7 +51,7 @@ if ($user['role'] !== 'CUSTOMER') {
   </main>
 </div>
 
-<script src="../assets/js/main.js"></script>
+<script src="../assets/js/main.js?v=2"></script>
 <script>
 const STAGES = {
   WAITING:   0,
@@ -85,7 +86,7 @@ function render(t) {
     let cls = 'step';
     if (i < stage || (isSkipped && i < 3)) cls += ' done';
     else if (i === stage && !isSkipped) cls += ' current';
-    const circle = isSkipped && i === 3 ? '<span class="circle" style="background:var(--red); color:#fff;">✕</span>' : `<span class="circle">${i + 1}</span>`;
+    const circle = isSkipped && i === 3 ? `<span class="circle" style="background:var(--red); color:#fff;">${icon('x', 14)}</span>` : `<span class="circle">${i + 1}</span>`;
     return `${circle}<span class="lbl">${lbl}</span>`;
   });
   const line = '<div class="step-line' + (stage >= 1 ? ' on' : '') + '"></div>';
@@ -102,6 +103,7 @@ function render(t) {
         <div>
           <span class="muted" style="font-size:.8rem;">Ticket</span>
           <div class="serif" style="font-size:2rem; font-weight:700;">${escapeHtml(t.ticket_code)}</div>
+          <div class="muted" style="font-size:.95rem;"><strong style="color:var(--ink);">${escapeHtml(t.service_name)}</strong></div>
         </div>
         ${badge}
       </div>
@@ -111,21 +113,13 @@ function render(t) {
         : etaLine}
       </div>
       <div class="divider"></div>
-      <p class="muted center" style="font-size:.85rem;">Service: <strong>${escapeHtml(t.service_name)}</strong> · issued ${new Date(t.issued_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+      <p class="muted center" style="font-size:.85rem;">Issued ${new Date(t.issued_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
     </div>
     <div class="row" style="justify-content:center; margin-top:1rem; flex-wrap:wrap;">
       <a class="btn btn-ghost btn-sm" href="index.php">Take a new number</a>
       <a class="btn btn-cool btn-sm" href="../display.php" target="_blank">Live board</a>
     </div>`;
 }
-
-// Poll the user's most recent active ticket automatically if they have one.
-window.addEventListener('DOMContentLoaded', async () => {
-  try {
-    const d = await api('../api/queue.php?action=live');
-    // No auto-track here; user must have a code. (Customer journeys explained clearly.)
-  } catch (e) { /* ignore */ }
-});
 </script>
 </body>
 </html>

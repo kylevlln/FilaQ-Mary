@@ -25,6 +25,27 @@ define('APP_TAGLINE', 'A Smart Queue Management System');
 define('BASE_PATH', dirname(__DIR__));
 define('APP_VERSION', '1.0.0');
 
+/**
+ * Site-relative URL root (e.g. "/FilaQ-Mary", or "" when the app is installed
+ * directly at the document root). Derived from the filesystem position of the
+ * app relative to DOCUMENT_ROOT so redirects work from every subfolder — a
+ * plain relative redirect like "login.php" would resolve to "/admin/login.php"
+ * when a session expires on an admin page, which 404s.
+ */
+$appRootReal = realpath(BASE_PATH) ?: '';
+$docRootReal = realpath($_SERVER['DOCUMENT_ROOT'] ?? '') ?: '';
+$webRoot = '';
+if ($appRootReal !== '' && $docRootReal !== '' && str_starts_with($appRootReal, $docRootReal)) {
+    $webRoot = rtrim(str_replace('\\', '/', substr($appRootReal, strlen($docRootReal))), '/');
+}
+define('APP_ROOT_URL', $webRoot);
+
+/** Absolute-on-site path, e.g. url('login.php') → "/FilaQ-Mary/login.php". */
+function url(string $path): string
+{
+    return APP_ROOT_URL . '/' . ltrim($path, '/');
+}
+
 /* ------------------------------------------------------------------ *
  *  Global error reporting (never leak errors to visitors)
  * ------------------------------------------------------------------ */
@@ -135,12 +156,12 @@ function require_login(): ?array
     $user = current_user();
     if ($user === null) {
         set_flash('Please sign in to continue.', 'info');
-        redirect('login.php');
+        redirect(url('login.php'));
     }
     if ($user['status'] !== 'ACTIVE') {
         session_destroy();
         set_flash('Your account is not yet active. Please wait for administrator approval.', 'warn');
-        redirect('login.php');
+        redirect(url('login.php'));
     }
     return $user;
 }
@@ -152,7 +173,7 @@ function require_role(string $role): void
     if ($user['role'] !== $role) {
         set_flash('You do not have permission to view that page.', 'error');
         http_response_code(403);
-        exit('403 — Forbidden. ' . APP_NAME);
+        exit('403 Forbidden. ' . APP_NAME);
     }
 }
 

@@ -9,8 +9,8 @@ $orgName = setting('org_name', APP_NAME);
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Live Board — <?php echo e($orgName); ?></title>
-<link rel="stylesheet" href="assets/css/style.css">
+<title>Live Board · <?php echo e($orgName); ?></title>
+<link rel="stylesheet" href="assets/css/style.css?v=3">
 <style>
   html, body { min-height: 100%; }
   .display-stage { min-height: 100vh; display: flex; flex-direction: column; padding: 1.4rem 2rem; }
@@ -20,7 +20,8 @@ $orgName = setting('org_name', APP_NAME);
   .display-clock { font-family: var(--font-serif); font-size: 1.9rem; color: var(--ink); }
   .display-now { text-align: center; padding: 2.6rem 1rem 1.8rem; margin-top: .5rem; }
   .display-now .big { font-size: clamp(6rem, 19vw, 13rem); }
-  .display-title { font-family: var(--font-serif); font-size: clamp(1.6rem, 4.5vw, 2.8rem); color: var(--ink); margin-top: .2rem; font-weight: 600; }
+  .display-title { font-family: var(--font-serif); font-size: clamp(1.6rem, 4.5vw, 3rem); color: var(--ink); margin-top: .3rem; font-weight: 600; }
+  .display-sub { font-family: var(--font-sans); font-size: clamp(1rem, 3.4vw, 1.9rem); color: var(--ink-soft); font-weight: 500; margin-top: .2rem; }
   .display-ann { font-size: 1.15rem; color: var(--aqua); letter-spacing: .05em; margin-top: .9rem; font-weight: 500; }
   .display-queues { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1.2rem; width: min(1240px, 98vw); margin: .7rem auto 0; }
   .qcard { text-align: center; padding: 1.5rem 1.2rem; background: var(--paper); border: 1px solid var(--line); border-radius: var(--r-md); box-shadow: var(--shadow-sm); }
@@ -32,22 +33,23 @@ $orgName = setting('org_name', APP_NAME);
   .upcoming-strip h3 { font-size: 1.1rem; color: var(--ink-soft); letter-spacing: .12em; text-transform: uppercase; }
   .upcoming-strip .tickets { display: flex; flex-wrap: wrap; gap: .8rem; }
   .u-tick { font-family: var(--font-serif); font-weight: 700; font-size: 1.5rem; padding: .9rem 1.4rem; background: var(--paper); border: 1px solid var(--line); border-radius: var(--r-sm); box-shadow: var(--shadow-sm); }
-  .u-tick .sv { display:block; font-family: var(--font-sans); font-size:.78rem; font-weight:400; color: var(--ink-soft); letter-spacing: .06em; }
+  .u-tick .sv { display:block; font-family: var(--font-sans); font-size:.84rem; font-weight:400; color: var(--ink-soft); letter-spacing: .06em; }
   @media (max-width: 700px) { .display-stage { padding: 1rem .8rem; } .display-now .big { font-size: 5rem; } }
 </style>
 </head>
 <body>
-<div class="blobs" aria-hidden="true"><div class="blob a"></div><div class="blob b"></div><div class="blob c"></div></div>
+<div class="blobs" aria-hidden="true"><div class="blob a"></div></div>
 <div class="display-stage">
   <div class="display-head">
-    <div class="brand"><span class="dot"></span><?php echo e($orgName); ?> — FilaQ</div>
+    <div class="brand"><span class="dot"></span><?php echo e($orgName); ?> · FilaQ</div>
     <div class="display-clock" id="clock">--:--</div>
   </div>
 
   <div class="display-now">
     <div class="label">Now serving</div>
     <div class="big" id="now-code">---</div>
-    <div class="display-title" id="now-where">Please wait…</div>
+    <div class="display-title" id="now-service">Please wait…</div>
+    <div class="display-sub" id="now-where"></div>
     <div class="display-ann"><?php echo e($announcement ?: ''); ?></div>
   </div>
 
@@ -63,10 +65,8 @@ $orgName = setting('org_name', APP_NAME);
   </div>
 </div>
 
-<script src="assets/js/main.js"></script>
+<script src="assets/js/main.js?v=2"></script>
 <script>
-const tickCache = {};
-
 function pad(n) { return String(n).padStart(2, '0'); }
 function tickClock() {
   const d = new Date();
@@ -90,13 +90,17 @@ async function refresh() {
 
     const now = d.now;
     const nowEl = document.getElementById('now-code');
+    const svcEl = document.getElementById('now-service');
+    const whereEl = document.getElementById('now-where');
     if (now && now.ticket_code) {
       nowEl.textContent = now.ticket_code;
-      document.getElementById('now-where').textContent =
-        (now.counter_name ? now.counter_name : 'Counter') + (now.status === 'SERVING' ? ' — serving now' : ' — please proceed');
+      svcEl.textContent = now.service_name || '';
+      whereEl.textContent =
+        (now.counter_name ? now.counter_name : 'Counter') + (now.status === 'SERVING' ? ', serving now' : ', please proceed');
     } else {
       nowEl.textContent = '—';
-      document.getElementById('now-where').textContent = 'No active call';
+      svcEl.textContent = 'No active call';
+      whereEl.textContent = '';
     }
 
     if (changed) {
@@ -117,7 +121,8 @@ async function refresh() {
       </div>`).join('');
     }
   } catch (e) {
-    document.getElementById('now-where').textContent = 'Offline — check server & database';
+    document.getElementById('now-service').textContent = '';
+    document.getElementById('now-where').textContent = 'Offline. Check the server and database.';
   }
 }
 

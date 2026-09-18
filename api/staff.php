@@ -5,20 +5,28 @@
 
 require_once __DIR__ . '/../config/config.php';
 require_once __DIR__ . '/../includes/queue.php';
+require_once __DIR__ . '/_boot.php';
 
-header('Content-Type: application/json; charset=utf-8');
-
-function staff_json_out(array $payload, int $status = 200): never
+/**
+ * Today's headline numbers for the staff desk.
+ * Shared by the queue action (merged into one response) and the stats action.
+ */
+function staff_stats(): array
 {
-    http_response_code($status);
-    echo json_encode($payload);
-    exit;
+    return [
+        'waiting'   => (int) (fetch_one('SELECT COUNT(*) AS c FROM queue_tickets WHERE status IN ("WAITING","CALLED")')['c'] ?? 0),
+        'serving'   => (int) (fetch_one('SELECT COUNT(*) AS c FROM queue_tickets WHERE status = "SERVING"')['c'] ?? 0),
+        'issued'    => (int) (fetch_one('SELECT COUNT(*) AS c FROM queue_tickets WHERE status != "CANCELLED" AND DATE(issued_at) = CURDATE()')['c'] ?? 0),
+        'completed' => (int) (fetch_one('SELECT COUNT(*) AS c FROM queue_tickets WHERE status = "COMPLETED" AND DATE(completed_at) = CURDATE()')['c'] ?? 0),
+        'skipped'   => (int) (fetch_one('SELECT COUNT(*) AS c FROM queue_tickets WHERE status = "SKIPPED" AND DATE(completed_at) = CURDATE()')['c'] ?? 0),
+        'avg_wait'  => (int) (fetch_one('SELECT COALESCE(AVG(actual_wait_sec)/60,0) AS a FROM queue_tickets WHERE status = "COMPLETED" AND DATE(issued_at) = CURDATE()')['a'] ?? 0),
+    ];
 }
 
 try {
     $user = require_login();
     if ($user['role'] !== 'STAFF' && $user['role'] !== 'ADMIN') {
-        staff_json_out(['ok' => false, 'message' => 'Forbidden.'], 403);
+        json_out(['ok' => false, 'message' => 'Forbidden.'], 403);
     }
 
     $action = $_GET['action'] ?? '';
@@ -26,33 +34,27 @@ try {
     switch ($action) {
         case 'queue': {
             // Waiting + currently called/serving tickets with service names.
+            // The position is computed server-side per row in ONE statement,
+            // avoiding a separate lookup (N+1) for every ticket in the list.
             $rows = fetch_all(
                 'SELECT t.id, t.ticket_code, t.customer_name, t.status, t.issued_at,
-                        t.estimated_wait_sec, s.name AS service_name
+                        t.estimated_wait_sec, s.name AS service_name,
+                        (SELECT COUNT(*) FROM queue_tickets p
+                         WHERE p.service_id = t.service_id
+                           AND p.status IN ("WAITING","CALLED") AND p.id < t.id) AS position
                  FROM queue_tickets t
                  JOIN services s ON s.id = t.service_id
                  WHERE t.status IN ("WAITING","CALLED","SERVING")
                  ORDER BY FIELD(t.status,"SERVING","CALLED","WAITING"), t.id ASC
                  LIMIT 40'
             );
-            foreach ($rows as &$r) {
-                $r['position'] = position_of_ticket((int) $r['id']);
-            }
-            unset($r);
-            staff_json_out(['ok' => true, 'data' => $rows]);
+            // Stats ride along in the same response so the staff desk makes ONE request per poll.
+            json_out(['ok' => true, 'data' => $rows, 'stats' => staff_stats()]);
             break;
         }
 
         case 'stats': {
-            $stats = [
-                'waiting'  => (int) (fetch_one('SELECT COUNT(*) AS c FROM queue_tickets WHERE status IN ("WAITING","CALLED")')['c'] ?? 0),
-                'serving'  => (int) (fetch_one('SELECT COUNT(*) AS c FROM queue_tickets WHERE status = "SERVING"')['c'] ?? 0),
-                'issued'   => (int) (fetch_one('SELECT COUNT(*) AS c FROM queue_tickets WHERE status != "CANCELLED" AND DATE(issued_at) = CURDATE()')['c'] ?? 0),
-                'completed'=> (int) (fetch_one('SELECT COUNT(*) AS c FROM queue_tickets WHERE status = "COMPLETED" AND DATE(completed_at) = CURDATE()')['c'] ?? 0),
-                'skipped'  => (int) (fetch_one('SELECT COUNT(*) AS c FROM queue_tickets WHERE status = "SKIPPED" AND DATE(completed_at) = CURDATE()')['c'] ?? 0),
-                'avg_wait' => (int) (fetch_one('SELECT COALESCE(AVG(actual_wait_sec)/60,0) AS a FROM queue_tickets WHERE status = "COMPLETED" AND DATE(issued_at) = CURDATE()')['a'] ?? 0),
-            ];
-            staff_json_out(['ok' => true, 'data' => $stats]);
+            json_out(['ok' => true, 'data' => staff_stats()]);
             break;
         }
 
@@ -68,14 +70,14 @@ try {
                  ORDER BY t.id DESC
                  LIMIT ' . (int) $limit
             );
-            staff_json_out(['ok' => true, 'data' => $rows]);
+            json_out(['ok' => true, 'data' => $rows]);
             break;
         }
 
         default:
-            staff_json_out(['ok' => false, 'message' => 'Unknown action.'], 404);
+            json_out(['ok' => false, 'message' => 'Unknown action.'], 404);
     }
 } catch (Throwable $t) {
     error_log('[FilaQ staff API] ' . $t->getMessage());
-    staff_json_out(['ok' => false, 'message' => 'An unexpected error occurred.'], 500);
+    json_out(['ok' => false, 'message' => 'An unexpected error occurred.'], 500);
 }

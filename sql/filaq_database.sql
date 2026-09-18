@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS counters (
 CREATE TABLE IF NOT EXISTS services (
   id                 INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   name               VARCHAR(100) NOT NULL,
+  code_prefix        VARCHAR(4) NOT NULL DEFAULT '',   -- ticket code prefix (2-4 letters), ADMIN
   description        TEXT NULL,
   avg_service_time_sec  INT UNSIGNED NOT NULL DEFAULT 300,  -- seconds per customer
   is_active          TINYINT(1) NOT NULL DEFAULT 1,
@@ -56,7 +57,7 @@ CREATE TABLE IF NOT EXISTS services (
 -- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS queue_tickets (
   id            INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-  ticket_code   VARCHAR(20) NOT NULL UNIQUE,      -- e.g. GEN-0042
+  ticket_code   VARCHAR(20) NOT NULL UNIQUE,      -- e.g. COR-014
   user_id       INT UNSIGNED NULL,                -- who claimed it (may be guest)
   service_id    INT UNSIGNED NOT NULL,
   counter_id    INT UNSIGNED NULL,
@@ -79,9 +80,26 @@ CREATE TABLE IF NOT EXISTS queue_tickets (
   INDEX idx_service (service_id),
   INDEX idx_counter (counter_id),
   INDEX idx_user (user_id),
+  INDEX idx_svc_status_id (service_id, status, id),
+  INDEX idx_counter_status (counter_id, status),
+  INDEX idx_status_issued (status, issued_at),
+  UNIQUE KEY uq_session (session_code),
   CONSTRAINT fk_ticket_service FOREIGN KEY (service_id) REFERENCES services(id) ON DELETE RESTRICT,
   CONSTRAINT fk_ticket_counter FOREIGN KEY (counter_id) REFERENCES counters(id) ON DELETE SET NULL,
   CONSTRAINT fk_ticket_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
+-- ------------------------------------------------------------
+-- ticket_sequences: atomic per-service-per-day ticket numbering.
+-- next_ticket_code() reserves numbers here (INSERT ... ON DUPLICATE KEY UPDATE)
+-- so concurrent requests can never be handed the same ticket code.
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS ticket_sequences (
+  service_id INT UNSIGNED NOT NULL,
+  day        DATE        NOT NULL,
+  next_no    INT UNSIGNED NOT NULL DEFAULT 1,
+  PRIMARY KEY (service_id, day),
+  CONSTRAINT fk_seq_service FOREIGN KEY (service_id) REFERENCES services(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
 -- ------------------------------------------------------------
@@ -157,24 +175,27 @@ VALUES ('System Administrator', 'admin', 'admin@filaq.local',
   '$2y$10$EmC8p3OgLOQUTdSRU0u1Zed3lgLB.L.ZAdq/VHPlCzz2DnH6lHBH6',
   'ADMIN', 'ACTIVE');
 
--- Default counters
+-- Default counters (barangay-style service windows)
 INSERT INTO counters (name, location) VALUES
-  ('Counter 1 - General', 'Front Office'),
-  ('Counter 2 - Registrar', 'Front Office'),
-  ('Counter 3 - Cashier', 'Finance Wing');
+  ('Window 1', 'Front Office'),
+  ('Window 2', 'Front Office'),
+  ('Window 3', 'Finance Wing');
 
--- Default services
-INSERT INTO services (name, description, avg_service_time_sec) VALUES
-  ('General Inquiry',   'General questions and information', 300),
-  ('Document Request',  'Request transcripts, certificates', 600),
-  ('Payment / Billing', 'Settle dues and payments', 360),
-  ('Registration',      'New enrollees and renewal', 720);
+-- Default services (barangay panel) — code_prefix is the ticket-code prefix
+-- shown on every ticket, e.g. "Certificate of Residency" issues "COR-014".
+INSERT INTO services (name, code_prefix, description, avg_service_time_sec) VALUES
+  ('Barangay Clearance', 'BC', 'Proof of local residence for permits and documents.', 300),
+  ('Certificate of Residency', 'COR', 'Official confirmation of residence within the barangay.', 300),
+  ('Certificate of Indigency', 'COI', 'Certificate for financial-assistance and social-service applications.', 300),
+  ('Community Tax Certificate (Cedula)', 'CED', 'Annual community tax payment and certificate issuance.', 180),
+  ('Business Permit / Clearance', 'BIZ', 'Processing of business permits and clearances.', 600),
+  ('Complaints & Mediation (Katarungang Pambarangay)', 'MED', 'Filing of complaints and conciliation under the Lupong Tagapamayapa.', 1200);
 
 -- Link counters to services
 INSERT INTO counter_services (counter_id, service_id) VALUES
   (1, 1), (1, 2),
-  (2, 2), (2, 4),
-  (3, 3), (3, 1);
+  (2, 3), (2, 4),
+  (3, 5), (3, 6);
 
 -- Default system settings
 INSERT INTO system_settings (setting_key, setting_value) VALUES

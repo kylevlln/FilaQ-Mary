@@ -8,8 +8,8 @@ $orgName = setting('org_name', APP_NAME);
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Terms of Service — <?php echo APP_NAME; ?></title>
-<link rel="stylesheet" href="assets/css/style.css">
+<title>Terms of Service · <?php echo APP_NAME; ?></title>
+<link rel="stylesheet" href="assets/css/style.css?v=3">
 </head>
 <body>
 <div class="blobs" aria-hidden="true"><div class="blob a"></div><div class="blob b"></div><div class="blob c"></div></div>

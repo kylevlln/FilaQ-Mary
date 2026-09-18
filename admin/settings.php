@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/../config/config.php';
 require_once __DIR__ . '/../includes/queue.php';
+require_once __DIR__ . '/../includes/icons.php';
 
 $user = require_login();
 if ($user['role'] !== 'ADMIN') {
@@ -12,22 +13,22 @@ if ($user['role'] !== 'ADMIN') {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Counters &amp; Services — FilaQ Admin</title>
-<link rel="stylesheet" href="../assets/css/style.css">
+<title>Counters &amp; Services · FilaQ</title>
+<link rel="stylesheet" href="../assets/css/style.css?v=3">
 </head>
 <body>
-<div class="blobs" aria-hidden="true"><div class="blob a"></div><div class="blob b"></div><div class="blob c"></div></div>
+<div class="blobs" aria-hidden="true"><div class="blob a"></div></div>
 <div class="dash">
   <aside class="dash-side">
     <a class="side-brand" href="index.php"><span class="dot"></span>FilaQ</a>
     <span class="side-caption">Admin</span>
-    <a class="side-link" href="index.php"><span class="ic">📊</span> Dashboard</a>
-    <a class="side-link" href="users.php"><span class="ic">👥</span> Users</a>
-    <a class="side-link active" href="settings.php"><span class="ic">⚙️</span> Counters &amp; Services</a>
-    <a class="side-link" href="logs.php"><span class="ic">🕵️</span> Activity Log</a>
+    <a class="side-link" href="index.php"><span class="ic"><?php echo icon('dashboard'); ?></span> Dashboard</a>
+    <a class="side-link" href="users.php"><span class="ic"><?php echo icon('users'); ?></span> Users</a>
+    <a class="side-link active" href="settings.php"><span class="ic"><?php echo icon('settings'); ?></span> Counters &amp; Services</a>
+    <a class="side-link" href="logs.php"><span class="ic"><?php echo icon('activity'); ?></span> Activity Log</a>
     <span class="side-caption">Queue</span>
-    <a class="side-link" href="../staff/index.php"><span class="ic">🔔</span> Queue Desk</a>
-    <a class="side-link" href="../display.php" target="_blank"><span class="ic">🖥️</span> Live Board</a>
+    <a class="side-link" href="../staff/index.php"><span class="ic"><?php echo icon('bell'); ?></span> Queue Desk</a>
+    <a class="side-link" href="../display.php" target="_blank"><span class="ic"><?php echo icon('monitor'); ?></span> Live Board</a>
     <div class="side-foot">Signed in as <strong><?php echo e($user['username']); ?></strong><br><a href="../logout.php">Sign out</a></div>
   </aside>
 
@@ -54,7 +55,7 @@ if ($user['role'] !== 'ADMIN') {
   </main>
 </div>
 
-<script src="../assets/js/main.js"></script>
+<script src="../assets/js/main.js?v=2"></script>
 <script>
 async function loadSettings() {
   try {
@@ -74,7 +75,6 @@ async function loadSettings() {
       </form>`;
   } catch (e) { document.getElementById('settings-form').innerHTML = `<div class="alert alert-error">${escapeHtml(e.message)}</div>`; }
 }
-document.getElementById('settings-form')?.addEventListener('submit', () => {});
 document.addEventListener('submit', async (e) => {
   if (e.target.id !== 'set-form') return;
   e.preventDefault();
@@ -92,7 +92,7 @@ function counterRow(c) {
     <div class="actions">
       <button class="btn btn-ghost btn-sm go-edit-counter" data-id="${c.id}" data-name="${escapeHtml(c.name)}" data-loc="${escapeHtml(c.location || '')}" data-active="${c.is_active}">Edit</button>
       ${Number(c.is_active) ? '' : '<span class="badge badge--pending">off</span>'}
-      <button class="btn btn-danger btn-sm go-del-counter" data-id="${c.id}">✕</button>
+      <button class="btn btn-danger btn-sm go-del-counter" data-id="${c.id}" aria-label="Remove counter">${icon('x', 14)}</button>
     </div>
   </div>`;
 }
@@ -100,13 +100,26 @@ function serviceRow(s) {
   return `<div class="queue-card flat" style="margin:0;">
     <div class="meta">
       <strong>${escapeHtml(s.name)}</strong>
+      ${s.code_prefix ? `<span class="badge badge--called" style="margin-left:.4rem;">${escapeHtml(s.code_prefix)}</span>` : ''}
       <br><span class="muted">${Math.round(s.avg_service_time_sec / 60)} min avg · ${escapeHtml(s.description || 'no description')}</span>
     </div>
     <div class="actions">
-      <button class="btn btn-ghost btn-sm go-edit-service" data-id="${s.id}" data-name="${escapeHtml(s.name)}" data-desc="${escapeHtml(s.description || '')}" data-time="${s.avg_service_time_sec}" data-active="${s.is_active}">Edit</button>
-      <button class="btn btn-danger btn-sm go-del-service" data-id="${s.id}">✕</button>
+      <button class="btn btn-ghost btn-sm go-edit-service" data-id="${s.id}" data-name="${escapeHtml(s.name)}" data-prefix="${escapeHtml(s.code_prefix || '')}" data-desc="${escapeHtml(s.description || '')}" data-time="${s.avg_service_time_sec}" data-active="${s.is_active}">Edit</button>
+      <button class="btn btn-danger btn-sm go-del-service" data-id="${s.id}" aria-label="Remove service">${icon('x', 14)}</button>
     </div>
   </div>`;
+}
+
+function derivePrefix(name) {
+  const s = (name || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  return (s || 'SVC').slice(0, 3);
+}
+function prefixPrompt(current, name) {
+  const p = prompt('Ticket code prefix (2-4 letters/numbers), e.g. COR:', current || derivePrefix(name));
+  if (p === null) return null;
+  const clean = p.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (clean.length < 2 || clean.length > 4) { toast('Prefix must be 2-4 letters or numbers.', 'warn'); return null; }
+  return clean;
 }
 
 async function loadLists() {
@@ -139,8 +152,10 @@ document.addEventListener('click', (e) => {
   if (e.target.closest('#new-service')) {
     const name = prompt('Service name:');
     if (name && name.trim()) {
+      const prefix = prefixPrompt('', name.trim());
+      if (prefix === null) return;
       const mins = prompt('Average minutes per customer (default 5):', '5');
-      createOrUpdateService({ name: name.trim(), description: '', avg_service_time_sec: Math.max(1, Number(mins) || 5) * 60, is_active: 1 });
+      createOrUpdateService({ name: name.trim(), code_prefix: prefix, description: '', avg_service_time_sec: Math.max(1, Number(mins) || 5) * 60, is_active: 1 });
     }
   }
   const ec = e.target.closest('.go-edit-counter');
@@ -158,9 +173,11 @@ document.addEventListener('click', (e) => {
   if (es) {
     const name = prompt('Service name:', es.dataset.name);
     if (name && name.trim()) {
+      const prefix = prefixPrompt(es.dataset.prefix, name.trim());
+      if (prefix === null) return;
       const mins = prompt('Average minutes per customer:', Math.round(Number(es.dataset.time) / 60) || 5);
       const desc = prompt('Description (optional):', es.dataset.desc);
-      createOrUpdateService({ id: es.dataset.id, name: name.trim(), description: desc || '', avg_service_time_sec: Math.max(1, Number(mins) || 5) * 60, is_active: es.dataset.active });
+      createOrUpdateService({ id: es.dataset.id, name: name.trim(), code_prefix: prefix, description: desc || '', avg_service_time_sec: Math.max(1, Number(mins) || 5) * 60, is_active: es.dataset.active });
     }
     return;
   }

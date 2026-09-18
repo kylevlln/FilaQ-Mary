@@ -6,33 +6,16 @@
 
 require_once __DIR__ . '/../config/config.php';
 require_once __DIR__ . '/../includes/queue.php';
-
-header('Content-Type: application/json; charset=utf-8');
-
-function admin_json_out(array $payload, int $status = 200): never
-{
-    http_response_code($status);
-    echo json_encode($payload);
-    exit;
-}
-
-function admin_body(): array
-{
-    $raw = file_get_contents('php://input');
-    if ($raw === '' || $raw === false) return $_POST;
-    $data = json_decode($raw, true);
-    if (!is_array($data)) throw new RuntimeException('Invalid JSON body.');
-    return $data;
-}
+require_once __DIR__ . '/_boot.php';
 
 try {
     $user = require_login();
     if ($user['role'] !== 'ADMIN') {
-        admin_json_out(['ok' => false, 'message' => 'Administrator access required.'], 403);
+        json_out(['ok' => false, 'message' => 'Administrator access required.'], 403);
     }
 
     $action = $_GET['action'] ?? ($_POST['action'] ?? '');
-    $data = admin_body();
+    $data = body_data();
 
     switch ($action) {
 
@@ -43,15 +26,15 @@ try {
                 'SELECT id, full_name, username, email, phone, role, status, last_login, counter_id, created_at
                  FROM users ORDER BY FIELD(role,"ADMIN","STAFF","CUSTOMER"), created_at DESC'
             );
-            admin_json_out(['ok' => true, 'data' => $rows]);
+            json_out(['ok' => true, 'data' => $rows]);
         }
 
         case 'approve-user': {
             $id = (int) ($data['id'] ?? 0);
             $role = in_array($data['role'] ?? '', ['STAFF', 'CUSTOMER'], true) ? $data['role'] : null;
-            if ($id <= 0) admin_json_out(['ok' => false, 'message' => 'Invalid user.'], 422);
+            if ($id <= 0) json_out(['ok' => false, 'message' => 'Invalid user.'], 422);
             $target = fetch_one('SELECT * FROM users WHERE id = ?', [$id]);
-            if (!$target) admin_json_out(['ok' => false, 'message' => 'User not found.'], 404);
+            if (!$target) json_out(['ok' => false, 'message' => 'User not found.'], 404);
 
             $counterId = null;
             if ($role === 'STAFF') {
@@ -60,27 +43,27 @@ try {
             $effectiveRole = $role ?? $target['role'];
             exec_write('UPDATE users SET status = "ACTIVE", role = ?, counter_id = ? WHERE id = ?', [$effectiveRole, $counterId, $id]);
             log_activity('USER_APPROVED', "Approved {$target['username']} as {$effectiveRole}", (int) $user['id']);
-            admin_json_out(['ok' => true, 'message' => 'User approved and activated.']);
+            json_out(['ok' => true, 'message' => 'User approved and activated.']);
         }
 
         case 'suspend-user': {
             $id = (int) ($data['id'] ?? 0);
-            if ($id === (int) $user['id']) admin_json_out(['ok' => false, 'message' => 'You cannot suspend your own account.'], 422);
+            if ($id === (int) $user['id']) json_out(['ok' => false, 'message' => 'You cannot suspend your own account.'], 422);
             exec_write('UPDATE users SET status = "SUSPENDED" WHERE id = ? AND role != "ADMIN"', [$id]);
-            admin_json_out(['ok' => true, 'message' => 'User suspended.']);
+            json_out(['ok' => true, 'message' => 'User suspended.']);
         }
 
         case 'reactivate-user': {
             $id = (int) ($data['id'] ?? 0);
             exec_write('UPDATE users SET status = "ACTIVE" WHERE id = ?', [$id]);
-            admin_json_out(['ok' => true, 'message' => 'User reactivated.']);
+            json_out(['ok' => true, 'message' => 'User reactivated.']);
         }
 
         case 'delete-user': {
             $id = (int) ($data['id'] ?? 0);
-            if ($id === (int) $user['id']) admin_json_out(['ok' => false, 'message' => 'You cannot delete your own account.'], 422);
+            if ($id === (int) $user['id']) json_out(['ok' => false, 'message' => 'You cannot delete your own account.'], 422);
             exec_write('DELETE FROM users WHERE id = ? AND role != "ADMIN"', [$id]);
-            admin_json_out(['ok' => true, 'message' => 'User deleted.']);
+            json_out(['ok' => true, 'message' => 'User deleted.']);
         }
 
         /* --------------------- COUNTERS ---------------------- */
@@ -90,40 +73,40 @@ try {
                 'SELECT c.*, (SELECT COUNT(*) FROM users u WHERE u.counter_id = c.id AND u.role="STAFF") AS staff_count
                  FROM counters c ORDER BY c.id'
             );
-            admin_json_out(['ok' => true, 'data' => $rows]);
+            json_out(['ok' => true, 'data' => $rows]);
         }
 
         case 'save-counter': {
             $id = (int) ($data['id'] ?? 0);
             $name = trim((string) ($data['name'] ?? ''));
             $location = trim((string) ($data['location'] ?? ''));
-            if ($name === '') admin_json_out(['ok' => false, 'message' => 'Counter name is required.'], 422);
+            if ($name === '') json_out(['ok' => false, 'message' => 'Counter name is required.'], 422);
             $active = !empty($data['is_active']) ? 1 : 0;
             if ($id > 0) {
                 exec_write('UPDATE counters SET name = ?, location = ?, is_active = ? WHERE id = ?', [$name, $location, $active, $id]);
-                admin_json_out(['ok' => true, 'message' => 'Counter updated.']);
+                json_out(['ok' => true, 'message' => 'Counter updated.']);
             }
             exec_write('INSERT INTO counters (name, location, is_active) VALUES (?, ?, ?)', [$name, $location, $active]);
-            admin_json_out(['ok' => true, 'message' => 'Counter added.']);
+            json_out(['ok' => true, 'message' => 'Counter added.']);
         }
 
         case 'delete-counter': {
             $id = (int) ($data['id'] ?? 0);
             exec_write('DELETE FROM counters WHERE id = ?', [$id]);
-            admin_json_out(['ok' => true, 'message' => 'Counter removed.']);
+            json_out(['ok' => true, 'message' => 'Counter removed.']);
         }
 
         case 'delete-service': {
             $id = (int) ($data['id'] ?? 0);
             exec_write('DELETE FROM services WHERE id = ?', [$id]);
-            admin_json_out(['ok' => true, 'message' => 'Service removed.']);
+            json_out(['ok' => true, 'message' => 'Service removed.']);
         }
 
         /* ---------------------- SERVICES --------------------- */
 
         case 'services': {
             $rows = fetch_all('SELECT * FROM services ORDER BY name');
-            admin_json_out(['ok' => true, 'data' => $rows]);
+            json_out(['ok' => true, 'data' => $rows]);
         }
 
         case 'save-service': {
@@ -132,13 +115,14 @@ try {
             $desc = trim((string) ($data['description'] ?? ''));
             $time = max(60, (int) ($data['avg_service_time_sec'] ?? 300));
             $active = !empty($data['is_active']) ? 1 : 0;
-            if ($name === '') admin_json_out(['ok' => false, 'message' => 'Service name is required.'], 422);
+            if ($name === '') json_out(['ok' => false, 'message' => 'Service name is required.'], 422);
+            $prefix = normalize_code_prefix($data['code_prefix'] ?? '', $name);
             if ($id > 0) {
-                exec_write('UPDATE services SET name = ?, description = ?, avg_service_time_sec = ?, is_active = ? WHERE id = ?', [$name, $desc, $time, $active, $id]);
-                admin_json_out(['ok' => true, 'message' => 'Service updated.']);
+                exec_write('UPDATE services SET name = ?, code_prefix = ?, description = ?, avg_service_time_sec = ?, is_active = ? WHERE id = ?', [$name, $prefix, $desc, $time, $active, $id]);
+                json_out(['ok' => true, 'message' => 'Service updated.']);
             }
-            exec_write('INSERT INTO services (name, description, avg_service_time_sec, is_active) VALUES (?, ?, ?, ?)', [$name, $desc, $time, $active]);
-            admin_json_out(['ok' => true, 'message' => 'Service added.']);
+            exec_write('INSERT INTO services (name, code_prefix, description, avg_service_time_sec, is_active) VALUES (?, ?, ?, ?, ?)', [$name, $prefix, $desc, $time, $active]);
+            json_out(['ok' => true, 'message' => 'Service added.']);
         }
 
         /* ----------------------- LOGS ------------------------ */
@@ -153,7 +137,7 @@ try {
                  ORDER BY l.id DESC
                  LIMIT ' . (int) $limit
             );
-            admin_json_out(['ok' => true, 'data' => $rows]);
+            json_out(['ok' => true, 'data' => $rows]);
         }
 
         /* --------------------- SETTINGS ---------------------- */
@@ -162,7 +146,7 @@ try {
             $rows = fetch_all('SELECT setting_key, setting_value FROM system_settings ORDER BY setting_key');
             $map = [];
             foreach ($rows as $r) $map[$r['setting_key']] = $r['setting_value'];
-            admin_json_out(['ok' => true, 'data' => $map]);
+            json_out(['ok' => true, 'data' => $map]);
         }
 
         case 'save-settings': {
@@ -177,7 +161,7 @@ try {
                 }
             }
             log_activity('SETTINGS_UPDATED', 'Updated system settings', (int) $user['id']);
-            admin_json_out(['ok' => true, 'message' => 'Settings saved.']);
+            json_out(['ok' => true, 'message' => 'Settings saved.']);
         }
 
         /* ----------------------- STATS ----------------------- */
@@ -200,13 +184,13 @@ try {
                  FROM services s LEFT JOIN queue_tickets t ON t.service_id = s.id AND DATE(t.issued_at) = CURDATE()
                  GROUP BY s.id, s.name ORDER BY cnt DESC'
             );
-            admin_json_out(['ok' => true, 'data' => ['today' => $today, 'week' => $week, 'by_service' => $byService]]);
+            json_out(['ok' => true, 'data' => ['today' => $today, 'week' => $week, 'by_service' => $byService]]);
         }
 
         default:
-            admin_json_out(['ok' => false, 'message' => 'Unknown action.'], 404);
+            json_out(['ok' => false, 'message' => 'Unknown action.'], 404);
     }
 } catch (Throwable $t) {
     error_log('[FilaQ admin API] ' . $t->getMessage());
-    admin_json_out(['ok' => false, 'message' => 'An unexpected error occurred.'], 500);
+    json_out(['ok' => false, 'message' => 'An unexpected error occurred.'], 500);
 }

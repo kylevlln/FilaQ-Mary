@@ -23,19 +23,48 @@ function setting(string $key, ?string $default = null): ?string
 
 /**
  * Returns the next ticket code for a service on a given date.
- * Format: "prefix-NNN" e.g. GEN-007.
- * Relies on counting today's tickets per service, avoiding a race-prone sequence table.
+ * Format: "prefix-NNN" e.g. COR-014.
+ *
+ * Uses an atomic upsert on ticket_sequences (one row per service per day):
+ *   INSERT ... ON DUPLICATE KEY UPDATE next_no = LAST_INSERT_ID(next_no + 1)
+ * then reads the new value via lastInsertId(). Two concurrent requests can
+ * therefore never be handed the same number (the old COUNT() approach could).
  */
 function next_ticket_code(int $serviceId, string $prefix = 'GEN'): string
 {
-    $today = date('Y-m-d');
-    $row = fetch_one(
-        'SELECT COUNT(*) AS c FROM queue_tickets
-         WHERE service_id = ? AND DATE(issued_at) = ? AND ticket_code IS NOT NULL',
-        [$serviceId, $today]
+    $stmt = db()->prepare(
+        'INSERT INTO ticket_sequences (service_id, day, next_no)
+         VALUES (?, ?, LAST_INSERT_ID(1))
+         ON DUPLICATE KEY UPDATE next_no = LAST_INSERT_ID(next_no + 1)'
     );
-    $next = ((int) ($row['c'] ?? 0)) + 1;
-    return sprintf('%s-%03d', $prefix, $next);
+    $stmt->execute([$serviceId, date('Y-m-d')]);
+    return sprintf('%s-%03d', $prefix, (int) db()->lastInsertId());
+}
+
+/**
+ * Fallback used when a service has no code_prefix yet: the old behaviour,
+ * i.e. the first letters of its name ("Documentary Requirements" -> "DOC").
+ */
+function derive_code_prefix(string $name): string
+{
+    $candidate = strtoupper(preg_replace('/[^A-Z0-9]+/', '', $name));
+    return strtoupper(substr(($candidate !== '' ? $candidate : 'SVC'), 0, 3));
+}
+
+/**
+ * Accepts the admin-entered prefix (or nothing) and returns a safe ticket
+ * prefix: 2-4 uppercase letters/numbers, falling back to the name-derived
+ * one when the value is missing or out of range.
+ */
+function normalize_code_prefix($prefix, string $name): string
+{
+    $p = strtoupper(trim((string) $prefix));
+    $p = preg_replace('/[^A-Z0-9]/', '', $p);
+    $len = strlen($p);
+    if ($len < 2 || $len > 4) {
+        return derive_code_prefix($name);
+    }
+    return $p;
 }
 
 /* ------------------------------------------------------------------ *
@@ -43,50 +72,64 @@ function next_ticket_code(int $serviceId, string $prefix = 'GEN'): string
  * ------------------------------------------------------------------ */
 
 /**
- * Estimates how many minutes a NEW ticket issued for a service will wait.
+ * Wait estimates for every active service, computed in ONE pass.
+ * Equivalent to calling estimate_wait_minutes_for_service() per service but
+ * without the per-service query loop (N+1): all counting is done in two
+ * grouped queries, then combined in PHP.
  *
- * Approach:
+ * Approach (unchanged logic):
  *   1. Service's configured average service time (sec).
  *   2. Multiply by tickets already waiting ahead for that service.
- *   3. Blend with a utilisation factor: how long, on average, this service
- *      has actually taken per person recently (live throughput), so
- *      estimates adapt when counters are faster or slower than the default.
+ *   3. When there is recent completed data, use the live average throughput
+ *      instead of the configured default, so estimates adapt to reality.
  */
+function service_wait_estimate_map(): array
+{
+    $services = fetch_all('SELECT id, avg_service_time_sec FROM services WHERE is_active = 1');
+
+    $aheadRows = fetch_all(
+        'SELECT service_id, COUNT(*) AS c
+         FROM queue_tickets
+         WHERE status IN ("WAITING","CALLED")
+         GROUP BY service_id'
+    );
+    $ahead = [];
+    foreach ($aheadRows as $r) {
+        $ahead[(int) $r['service_id']] = (int) $r['c'];
+    }
+
+    // Live throughput: average seconds per served ticket over the last 90 minutes.
+    $thpRows = fetch_all(
+        'SELECT service_id, AVG(actual_wait_sec) AS avgw, COUNT(*) AS c
+         FROM queue_tickets
+         WHERE status = "COMPLETED" AND serve_started_at >= DATE_SUB(NOW(), INTERVAL 90 MINUTE)
+         GROUP BY service_id'
+    );
+    $liveSec = [];
+    foreach ($thpRows as $r) {
+        if ((int) $r['c'] > 0 && (int) $r['avgw'] > 0) {
+            $liveSec[(int) $r['service_id']] = (float) $r['avgw'];
+        }
+    }
+
+    $out = [];
+    foreach ($services as $s) {
+        $id = (int) $s['id'];
+        $effectiveSec = $liveSec[$id] ?? max(60, (int) $s['avg_service_time_sec']);
+        $out[$id] = (int) ceil(($ahead[$id] ?? 0) * $effectiveSec / 60.0);
+    }
+    return $out;
+}
+
+/** Estimated wait (minutes) for a NEW ticket issued to one service. */
 function estimate_wait_minutes_for_service(int $serviceId): int
 {
-    $service = fetch_one('SELECT id, name, avg_service_time_sec FROM services WHERE id = ?', [$serviceId]);
-    if ($service === null) {
-        return 0;
-    }
-
-    $defaultSec = max(60, (int) $service['avg_service_time_sec']);
-
-    $ahead = (int) (fetch_one(
-        'SELECT COUNT(*) AS c FROM queue_tickets
-         WHERE service_id = ? AND status IN ("WAITING","CALLED")',
-        [$serviceId]
-    )['c'] ?? 0);
-
-    // Live throughput: average actual minutes-per-served-ticket over the last 90 minutes.
-    $throughput = fetch_one(
-        'SELECT AVG(actual_wait_sec) AS avgw, COUNT(*) AS c
-         FROM queue_tickets
-         WHERE service_id = ? AND status = "COMPLETED" AND serve_started_at >= DATE_SUB(NOW(), INTERVAL 90 MINUTE)',
-        [$serviceId]
-    );
-
-    $liveSec = null;
-    if ($throughput && (int) $throughput['c'] > 0 && (int) $throughput['avgw'] > 0) {
-        $liveSec = (float) $throughput['avgw'];
-    }
-
-    $effectiveSec = $liveSec !== null ? $liveSec : (float) $defaultSec;
-
-    return (int) ceil(($ahead * $effectiveSec) / 60.0);
+    return service_wait_estimate_map()[$serviceId] ?? 0;
 }
 
 /**
  * Estimated wait (minutes) for ONE specific ticket given its position in line.
+ * All tickets ahead of it share the same service, so one query suffices.
  */
 function remaining_wait_for_ticket(int $ticketId): int
 {
@@ -95,38 +138,21 @@ function remaining_wait_for_ticket(int $ticketId): int
         return 0;
     }
 
-    $ahead = fetch_all(
-        'SELECT id, service_id FROM queue_tickets
-         WHERE service_id = ?
-           AND id < ?
-           AND status IN ("WAITING","CALLED")
-         ORDER BY id ASC',
+    $row = fetch_one(
+        'SELECT COUNT(t.id) AS ahead, MAX(s.avg_service_time_sec) AS avg_sec
+         FROM queue_tickets t
+         JOIN services s ON s.id = t.service_id
+         WHERE t.service_id = ? AND t.id < ? AND t.status IN ("WAITING","CALLED")',
         [$ticket['service_id'], $ticketId]
     );
 
-    $totalSec = 0.0;
-    foreach ($ahead as $t) {
-        $sev = (int) (fetch_one('SELECT avg_service_time_sec FROM services WHERE id = ?', [$t['service_id']])['avg_service_time_sec'] ?? 300);
-        $totalSec += max(60, $sev);
-    }
-
+    $totalSec = (int) ($row['ahead'] ?? 0) * max(60, (int) ($row['avg_sec'] ?? 300));
     return (int) ceil($totalSec / 60.0);
 }
 
 /* ------------------------------------------------------------------ *
  *  Queue lists
  * ------------------------------------------------------------------ */
-
-function waiting_tickets(int $serviceId, int $limit = 8): array
-{
-    return fetch_all(
-        'SELECT * FROM queue_tickets
-         WHERE service_id = ? AND status IN ("WAITING","CALLED")
-         ORDER BY FIELD(status, "CALLED","WAITING"), id ASC
-         LIMIT ?',
-        [$serviceId, $limit]
-    );
-}
 
 /** Number waiting ahead of a given ticket. */
 function position_of_ticket(int $ticketId): int
@@ -153,7 +179,7 @@ function take_ticket(int $serviceId, ?string $customerName = null, ?string $cont
         throw new RuntimeException('That service is not available right now.');
     }
 
-    $code = next_ticket_code($serviceId, substr(strtoupper(preg_replace('/[^A-Z0-9]+/', '', $service['name'])) ?: 'SVC', 0, 3));
+    $code = next_ticket_code($serviceId, normalize_code_prefix($service['code_prefix'] ?? '', $service['name']));
     $sessionCode = strtoupper(substr(bin2hex(random_bytes(4)), 0, 8));
     $est = estimate_wait_minutes_for_service($serviceId);
 
@@ -229,6 +255,9 @@ function complete_ticket(int $ticketId): bool
     $ticket = fetch_one('SELECT * FROM queue_tickets WHERE id = ?', [$ticketId]);
     if ($ticket === null) {
         throw new RuntimeException('That ticket does not exist.');
+    }
+    if ($ticket['status'] !== 'SERVING') {
+        throw new RuntimeException('Only a ticket currently being served can be marked complete.');
     }
 
     // Compute actual wait/service times in SQL to avoid timezone mismatches

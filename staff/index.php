@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/../config/config.php';
 require_once __DIR__ . '/../includes/queue.php';
+require_once __DIR__ . '/../includes/icons.php';
 
 $user = require_login();
 if ($user['role'] !== 'STAFF' && $user['role'] !== 'ADMIN') {
@@ -15,21 +16,21 @@ $defaultCounter = $user['counter_id'] ?? ($counters[0]['id'] ?? 0);
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Queue Desk — FilaQ Staff</title>
-<link rel="stylesheet" href="../assets/css/style.css">
+<title>Queue Desk · FilaQ</title>
+<link rel="stylesheet" href="../assets/css/style.css?v=3">
 </head>
 <body>
-<div class="blobs" aria-hidden="true"><div class="blob a"></div><div class="blob b"></div><div class="blob c"></div></div>
+<div class="blobs" aria-hidden="true"><div class="blob a"></div></div>
 <div class="dash">
   <aside class="dash-side">
     <a class="side-brand" href="index.php"><span class="dot"></span>FilaQ</a>
     <span class="side-caption">Menu</span>
-    <a class="side-link active" href="index.php"><span class="ic">🔔</span> Queue Desk</a>
-    <a class="side-link" href="../display.php" target="_blank"><span class="ic">🖥️</span> Live Board</a>
+    <a class="side-link active" href="index.php"><span class="ic"><?php echo icon('bell'); ?></span> Queue Desk</a>
+    <a class="side-link" href="../display.php" target="_blank"><span class="ic"><?php echo icon('monitor'); ?></span> Live Board</a>
     <?php if ($user['role'] === 'ADMIN'): ?>
       <span class="side-caption">Admin</span>
-      <a class="side-link" href="../admin/index.php"><span class="ic">📊</span> Dashboard</a>
-      <a class="side-link" href="../admin/users.php"><span class="ic">👥</span> Users</a>
+      <a class="side-link" href="../admin/index.php"><span class="ic"><?php echo icon('dashboard'); ?></span> Dashboard</a>
+      <a class="side-link" href="../admin/users.php"><span class="ic"><?php echo icon('users'); ?></span> Users</a>
     <?php endif; ?>
     <div class="side-foot">
       Signed in as <strong><?php echo e($user['username']); ?></strong><br>
@@ -54,10 +55,10 @@ $defaultCounter = $user['counter_id'] ?? ($counters[0]['id'] ?? 0);
     </div>
 
     <div class="stats-row stagger" id="stats">
-      <div class="stat-card glow-orange"><span class="stat-label">Issued today</span><span class="stat-value" id="st-issued">…</span></div>
-      <div class="stat-card glow-cyan"><span class="stat-label">Serving now</span><span class="stat-value" id="st-serving">…</span></div>
-      <div class="stat-card glow-pink"><span class="stat-label">Completed</span><span class="stat-value" id="st-completed">…</span></div>
-      <div class="stat-card"><span class="stat-label">Avg wait (min)</span><span class="stat-value" id="st-avg">…</span></div>
+      <div class="stat-card glow-orange"><span class="stat-label">Issued today</span><span class="stat-value" id="st-issued">—</span></div>
+      <div class="stat-card glow-cyan"><span class="stat-label">Serving now</span><span class="stat-value" id="st-serving">—</span></div>
+      <div class="stat-card glow-pink"><span class="stat-label">Completed</span><span class="stat-value" id="st-completed">—</span></div>
+      <div class="stat-card"><span class="stat-label">Avg wait (min)</span><span class="stat-value" id="st-avg">—</span></div>
     </div>
 
     <div class="section-head"><h2>Waiting line</h2><span class="badge badge--waiting" id="queue-count">0 waiting</span></div>
@@ -65,7 +66,7 @@ $defaultCounter = $user['counter_id'] ?? ($counters[0]['id'] ?? 0);
   </main>
 </div>
 
-<script src="../assets/js/main.js"></script>
+<script src="../assets/js/main.js?v=2"></script>
 <script>
 let lastCalled = null;
 let lastQueueHash = '';
@@ -76,24 +77,22 @@ function queueHash(rows) {
 
 async function loadQueue() {
   try {
-    const [q, s] = await Promise.all([
-      api('../api/staff.php?action=queue'),
-      api('../api/staff.php?action=stats')
-    ]);
+    const d = await api('../api/staff.php?action=queue');
 
-    // Stats (cheap — always update)
-    document.getElementById('st-issued').textContent = s.data.issued;
-    document.getElementById('st-serving').textContent = s.data.serving;
-    document.getElementById('st-completed').textContent = s.data.completed;
-    document.getElementById('st-avg').textContent = s.data.avg_wait;
+    // Stats arrive with the queue in one request — no separate poll.
+    const s = d.stats;
+    document.getElementById('st-issued').textContent = s.issued;
+    document.getElementById('st-serving').textContent = s.serving;
+    document.getElementById('st-completed').textContent = s.completed;
+    document.getElementById('st-avg').textContent = s.avg_wait;
 
     // Detect newly-called ticket for the ding
-    const called = q.data.find(t => t.status === 'CALLED' || t.status === 'SERVING');
-    const nowHash = queueHash(q.data);
+    const called = d.data.find(t => t.status === 'CALLED' || t.status === 'SERVING');
+    const nowHash = queueHash(d.data);
     if (called && nowHash !== lastQueueHash && lastQueueHash !== '') {
       if (lastCalled !== called.ticket_code + called.status) {
         playDing();
-        toast(`Now serving: ${called.ticket_code}`, 'info');
+        toast(`Now serving: ${called.ticket_code} · ${escapeHtml(called.service_name || '')}`, 'info');
       }
     }
     lastCalled = called ? called.ticket_code + called.status : null;
@@ -104,13 +103,13 @@ async function loadQueue() {
 
     // Render list
     const list = document.getElementById('queue-list');
-    document.getElementById('queue-count').textContent = q.data.length + ' waiting';
-    if (!q.data.length) {
-      list.innerHTML = '<div class="empty"><span class="big">🎉</span>No one is in line right now.</div>';
+    document.getElementById('queue-count').textContent = d.data.length + ' waiting';
+    if (!d.data.length) {
+      list.innerHTML = '<div class="empty">No one is in line right now.</div>';
       return;
     }
 
-    list.innerHTML = q.data.map((t, i) => {
+    list.innerHTML = d.data.map((t, i) => {
       const isCurrent = t.status === 'SERVING' || t.status === 'CALLED';
       return `
         <div class="queue-card ${isCurrent ? 'confirm' : ''}" data-id="${t.id}" data-status="${t.status}" style="${isCurrent ? 'border-color:var(--caramel); background:#fffaf4;' : ''}">

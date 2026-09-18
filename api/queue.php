@@ -6,29 +6,7 @@
 
 require_once __DIR__ . '/../config/config.php';
 require_once __DIR__ . '/../includes/queue.php';
-
-header('Content-Type: application/json; charset=utf-8');
-
-function json_out(array $payload, int $status = 200): never
-{
-    http_response_code($status);
-    echo json_encode($payload);
-    exit;
-}
-
-/** Read a JSON request body or $_POST (throws on malformed JSON only when body is present). */
-function request_data(): array
-{
-    $raw = file_get_contents('php://input');
-    if ($raw === '' || $raw === false) {
-        return $_POST;
-    }
-    $data = json_decode($raw, true);
-    if (!is_array($data)) {
-        throw new RuntimeException('Request body must be valid JSON.');
-    }
-    return $data;
-}
+require_once __DIR__ . '/_boot.php';
 
 try {
     $action = $_GET['action'] ?? ($_POST['action'] ?? '');
@@ -38,8 +16,9 @@ try {
 
         case 'services': {
             $services = fetch_all('SELECT id, name, description, avg_service_time_sec, CONCAT_WS(" ", name) AS label FROM services WHERE is_active = 1 ORDER BY name');
+            $estimates = service_wait_estimate_map();
             foreach ($services as &$s) {
-                $s['est_wait_min'] = estimate_wait_minutes_for_service((int) $s['id']);
+                $s['est_wait_min'] = $estimates[(int) $s['id']] ?? 0;
             }
             unset($s);
             json_out(['ok' => true, 'data' => $services]);
@@ -83,8 +62,9 @@ try {
                  GROUP BY s.id, s.name
                  ORDER BY s.name'
             );
+            $estimates = service_wait_estimate_map();
             foreach ($queues as &$q) {
-                $q['est_wait_min'] = estimate_wait_minutes_for_service((int) $q['service_id']);
+                $q['est_wait_min'] = $estimates[(int) $q['service_id']] ?? 0;
             }
             unset($q);
 
@@ -115,7 +95,7 @@ try {
         }
 
         case 'take-ticket': {
-            $data = request_data();
+            $data = body_data();
             $serviceId = (int) ($data['service_id'] ?? 0);
             $name  = trim((string) ($data['customer_name'] ?? ''));
             $phone = trim((string) ($data['contact'] ?? ''));
@@ -123,6 +103,7 @@ try {
                 json_out(['ok' => false, 'message' => 'Please choose a service first.'], 422);
             }
             $ticket = take_ticket($serviceId, $name !== '' ? $name : null, $phone !== '' ? $phone : null);
+            $ticket['service_name'] = (fetch_one('SELECT name FROM services WHERE id = ?', [$serviceId])['name'] ?? '') ?: null;
             json_out(['ok' => true, 'data' => $ticket, 'message' => 'Your number is ready!']);
             break;
         }
@@ -134,7 +115,7 @@ try {
             if ($u['role'] !== 'STAFF' && $u['role'] !== 'ADMIN') {
                 json_out(['ok' => false, 'message' => 'Only staff can call numbers.'], 403);
             }
-            $data = request_data();
+            $data = body_data();
             $ticketId = (int) ($data['ticket_id'] ?? 0);
             $counterId = (int) ($data['counter_id'] ?? $u['counter_id'] ?? 0);
             if ($ticketId <= 0) json_out(['ok' => false, 'message' => 'Invalid ticket.'], 422);
@@ -147,7 +128,7 @@ try {
         case 'start': {
             $u = require_login();
             if ($u['role'] !== 'STAFF' && $u['role'] !== 'ADMIN') json_out(['ok' => false, 'message' => 'Staff only.'], 403);
-            $data = request_data();
+            $data = body_data();
             start_serving((int) ($data['ticket_id'] ?? 0));
             json_out(['ok' => true, 'message' => 'Serving started.']);
             break;
@@ -156,7 +137,7 @@ try {
         case 'complete': {
             $u = require_login();
             if ($u['role'] !== 'STAFF' && $u['role'] !== 'ADMIN') json_out(['ok' => false, 'message' => 'Staff only.'], 403);
-            $data = request_data();
+            $data = body_data();
             complete_ticket((int) ($data['ticket_id'] ?? 0));
             json_out(['ok' => true, 'message' => 'Service completed.']);
             break;
@@ -165,7 +146,7 @@ try {
         case 'skip': {
             $u = require_login();
             if ($u['role'] !== 'STAFF' && $u['role'] !== 'ADMIN') json_out(['ok' => false, 'message' => 'Staff only.'], 403);
-            $data = request_data();
+            $data = body_data();
             skip_ticket((int) ($data['ticket_id'] ?? 0));
             json_out(['ok' => true, 'message' => 'Ticket skipped.']);
             break;

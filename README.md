@@ -1,6 +1,6 @@
 # FilaQ
 
-A small queue management system for offices and school desks. Builds on XAMPP (PHP + MySQL).
+A small queue management system for barangay halls, clinics, and other office front desks. Builds on XAMPP (PHP + MySQL).
 
 ## Run it
 

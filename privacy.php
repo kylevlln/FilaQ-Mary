@@ -8,8 +8,8 @@ $orgName = setting('org_name', APP_NAME);
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Privacy Policy — <?php echo APP_NAME; ?></title>
-<link rel="stylesheet" href="assets/css/style.css">
+<title>Privacy Policy · <?php echo APP_NAME; ?></title>
+<link rel="stylesheet" href="assets/css/style.css?v=3">
 </head>
 <body>
 <div class="blobs" aria-hidden="true"><div class="blob a"></div><div class="blob b"></div><div class="blob c"></div></div>
@@ -38,7 +38,7 @@ $orgName = setting('org_name', APP_NAME);
       </ul>
 
       <h2>3. How we use your information</h2>
-      <p>We use this information only to provide, secure, and improve the queue service — including issuing tickets, calculating estimated wait times, tracking queue status, monitoring activity, and keeping administrative records. We do not sell or rent your information to anyone.</p>
+      <p>We use this information only to provide, secure, and improve the queue service: issuing tickets, calculating estimated wait times, tracking queue status, monitoring activity, and keeping administrative records. We do not sell or rent your information to anyone.</p>
 
       <h2>4. Local &amp; offline operation</h2>
       <p>FilaQ is designed to run locally on the organization's own computer (for example, on XAMPP). This means your data generally stays on the organization's premises and is not transmitted to third-party servers.</p>
@@ -47,7 +47,7 @@ $orgName = setting('org_name', APP_NAME);
       <p>Queue tickets and activity logs are kept for as long as they are useful for administration and reporting. If you would like your personal account data removed, contact the administrator.</p>
 
       <h2>6. Your choices</h2>
-      <p>You may choose to use FilaQ without creating an account — a guest can simply take a number and use the tracking code printed on their ticket. You may also request that your account be deleted.</p>
+      <p>You may choose to use FilaQ without creating an account at all. A guest can simply take a number and use the tracking code printed on their ticket. You may also request that your account be deleted.</p>
 
       <h2>7. Security</h2>
       <p>Passwords are stored as secure hashes, prepared statements are used for all database queries, and staff accounts must be approved by an administrator. No system is completely secure, but we take reasonable measures appropriate to a local, non-public service.</p>

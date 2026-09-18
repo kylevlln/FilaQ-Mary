@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/../config/config.php';
 require_once __DIR__ . '/../includes/queue.php';
+require_once __DIR__ . '/../includes/icons.php';
 
 $user = require_login();
 if ($user['role'] !== 'ADMIN') {
@@ -13,22 +14,22 @@ $counters = fetch_all('SELECT * FROM counters WHERE is_active = 1 ORDER BY name'
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>User Management — FilaQ Admin</title>
-<link rel="stylesheet" href="../assets/css/style.css">
+<title>User Management · FilaQ</title>
+<link rel="stylesheet" href="../assets/css/style.css?v=3">
 </head>
 <body>
-<div class="blobs" aria-hidden="true"><div class="blob a"></div><div class="blob b"></div><div class="blob c"></div></div>
+<div class="blobs" aria-hidden="true"><div class="blob a"></div></div>
 <div class="dash">
   <aside class="dash-side">
     <a class="side-brand" href="index.php"><span class="dot"></span>FilaQ</a>
     <span class="side-caption">Admin</span>
-    <a class="side-link" href="index.php"><span class="ic">📊</span> Dashboard</a>
-    <a class="side-link active" href="users.php"><span class="ic">👥</span> Users</a>
-    <a class="side-link" href="settings.php"><span class="ic">⚙️</span> Counters &amp; Services</a>
-    <a class="side-link" href="logs.php"><span class="ic">🕵️</span> Activity Log</a>
+    <a class="side-link" href="index.php"><span class="ic"><?php echo icon('dashboard'); ?></span> Dashboard</a>
+    <a class="side-link active" href="users.php"><span class="ic"><?php echo icon('users'); ?></span> Users</a>
+    <a class="side-link" href="settings.php"><span class="ic"><?php echo icon('settings'); ?></span> Counters &amp; Services</a>
+    <a class="side-link" href="logs.php"><span class="ic"><?php echo icon('activity'); ?></span> Activity Log</a>
     <span class="side-caption">Queue</span>
-    <a class="side-link" href="../staff/index.php"><span class="ic">🔔</span> Queue Desk</a>
-    <a class="side-link" href="../display.php" target="_blank"><span class="ic">🖥️</span> Live Board</a>
+    <a class="side-link" href="../staff/index.php"><span class="ic"><?php echo icon('bell'); ?></span> Queue Desk</a>
+    <a class="side-link" href="../display.php" target="_blank"><span class="ic"><?php echo icon('monitor'); ?></span> Live Board</a>
     <div class="side-foot">Signed in as <strong><?php echo e($user['username']); ?></strong><br><a href="../logout.php">Sign out</a></div>
   </aside>
 
@@ -41,7 +42,7 @@ $counters = fetch_all('SELECT * FROM counters WHERE is_active = 1 ORDER BY name'
   </main>
 </div>
 
-<script src="../assets/js/main.js"></script>
+<script src="../assets/js/main.js?v=2"></script>
 <script>
 const counters = <?php echo json_encode($counters); ?>;
 
@@ -107,7 +108,7 @@ document.getElementById('users-wrap').addEventListener('click', async (e) => {
       const pick = prompt('Assign this staff member to which counter?\n' + counters.map(c => c.id + ': ' + c.name).join('\n'));
       if (pick === null) return;
       if (counters.some(c => c.id === Number(pick))) payload.counter_id = Number(pick);
-      else { toast('Invalid counter number — cancelled.', 'warn'); return; }
+      else { toast('Invalid counter number. Nothing was changed.', 'warn'); return; }
     }
     try {
       const d = await api('../api/admin.php?action=approve-user', { method: 'POST', body: payload });

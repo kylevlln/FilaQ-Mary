@@ -46,16 +46,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Sign In — <?php echo APP_NAME; ?></title>
-<link rel="stylesheet" href="assets/css/style.css">
+<title>Sign in · <?php echo APP_NAME; ?></title>
+<link rel="stylesheet" href="assets/css/style.css?v=3">
 </head>
 <body>
-<div class="blobs" aria-hidden="true"><div class="blob a"></div><div class="blob b"></div><div class="blob c"></div></div>
+<div class="blobs" aria-hidden="true"><div class="blob a"></div></div>
 <div class="auth-wrap">
   <div class="auth-card">
     <div class="brand">
-      <a href="index.php" style="text-decoration:none; color:inherit;"><h1 class="grad-text"><?php echo APP_NAME; ?></h1></a>
-      <p>Welcome back — your number awaits.</p>
+      <a href="index.php" style="text-decoration:none; color:inherit;"><h1><?php echo APP_NAME; ?></h1></a>
+      <p>Welcome back. Your number awaits.</p>
     </div>
 
     <?php if ($error): ?><div class="alert alert-error"><?php echo e($error); ?></div><?php endif; ?>
@@ -80,7 +80,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     </div>
   </div>
 </div>
-<script src="assets/js/main.js"></script>
+<script src="assets/js/main.js?v=2"></script>
 <script>
 document.getElementById('login-form').addEventListener('submit', function (e) {
   const errors = validateForm(this);
