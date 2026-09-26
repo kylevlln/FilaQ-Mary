@@ -118,6 +118,18 @@ CREATE TABLE IF NOT EXISTS activity_logs (
 ) ENGINE=InnoDB;
 
 -- ------------------------------------------------------------
+-- rate_limits: login throttle (one row per IP + action)
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS rate_limits (
+  id           INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  ip_address   VARCHAR(45) NOT NULL,
+  action       VARCHAR(32) NOT NULL,
+  count        INT UNSIGNED NOT NULL DEFAULT 1,
+  window_start TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_rate_ip_action (ip_address, action)
+) ENGINE=InnoDB;
+
+-- ------------------------------------------------------------
 -- system_settings: key/value settings for the system
 -- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS system_settings (

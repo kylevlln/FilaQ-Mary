@@ -53,45 +53,61 @@ function validate_password_strength(string $password, string $confirm): ?string
  * Login throttle, backed by the rate_limits table (unique ip+action).
  * Returns the number of seconds left in the lock-out window, or 0 when
  * the caller may try again. Locked = 5+ failed attempts inside 5 minutes.
+ *
+ * Best-effort: if the table is missing (older/fresh schema), these degrade
+ * to "no throttle" instead of fatally breaking the sign-in page.
  */
 function login_lock_seconds(): int
 {
-    $ip = $_SERVER['REMOTE_ADDR'] ?? 'local';
-    $row = fetch_one(
-        'SELECT count, window_start FROM rate_limits WHERE ip_address = ? AND action = "login"',
-        [$ip]
-    );
-    if ($row === null) {
+    try {
+        $ip = $_SERVER['REMOTE_ADDR'] ?? 'local';
+        $row = fetch_one(
+            'SELECT count, window_start FROM rate_limits WHERE ip_address = ? AND action = "login"',
+            [$ip]
+        );
+        if ($row === null) {
+            return 0;
+        }
+        $elapsed = time() - strtotime($row['window_start']);
+        if ($elapsed >= 300) {
+            return 0;
+        }
+        if ((int) $row['count'] >= 5) {
+            return 300 - $elapsed;
+        }
+        return 0;
+    } catch (Throwable $t) {
+        error_log('[FilaQ] rate_limits unavailable (login throttle off): ' . $t->getMessage());
         return 0;
     }
-    $elapsed = time() - strtotime($row['window_start']);
-    if ($elapsed >= 300) {
-        return 0;
-    }
-    if ((int) $row['count'] >= 5) {
-        return 300 - $elapsed;
-    }
-    return 0;
 }
 
 /** Record a failed login (atomic reset when the window has expired). */
 function record_failed_login(): void
 {
-    $ip = $_SERVER['REMOTE_ADDR'] ?? 'local';
-    db()->prepare(
-        'INSERT INTO rate_limits (ip_address, action, count, window_start)
-         VALUES (?, "login", 1, NOW())
-         ON DUPLICATE KEY UPDATE
-           count         = IF(window_start < NOW() - INTERVAL 5 MINUTE, 1, count + 1),
-           window_start  = IF(window_start < NOW() - INTERVAL 5 MINUTE, NOW(), window_start)'
-    )->execute([$ip]);
+    try {
+        $ip = $_SERVER['REMOTE_ADDR'] ?? 'local';
+        db()->prepare(
+            'INSERT INTO rate_limits (ip_address, action, count, window_start)
+             VALUES (?, "login", 1, NOW())
+             ON DUPLICATE KEY UPDATE
+               count         = IF(window_start < NOW() - INTERVAL 5 MINUTE, 1, count + 1),
+               window_start  = IF(window_start < NOW() - INTERVAL 5 MINUTE, NOW(), window_start)'
+        )->execute([$ip]);
+    } catch (Throwable $t) {
+        error_log('[FilaQ] rate_limits unavailable (throttle row skipped): ' . $t->getMessage());
+    }
 }
 
 /** Clear failed-login tracking after a successful sign-in. */
 function clear_failed_logins(): void
 {
-    $ip = $_SERVER['REMOTE_ADDR'] ?? 'local';
-    exec_write('DELETE FROM rate_limits WHERE ip_address = ? AND action = "login"', [$ip]);
+    try {
+        $ip = $_SERVER['REMOTE_ADDR'] ?? 'local';
+        exec_write('DELETE FROM rate_limits WHERE ip_address = ? AND action = "login"', [$ip]);
+    } catch (Throwable $t) {
+        error_log('[FilaQ] rate_limits unavailable (throttle not cleared): ' . $t->getMessage());
+    }
 }
 
 /* ------------------------------------------------------------------ *
