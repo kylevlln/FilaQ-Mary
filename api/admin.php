@@ -187,6 +187,61 @@ try {
             json_out(['ok' => true, 'data' => ['today' => $today, 'week' => $week, 'by_service' => $byService]]);
         }
 
+        case 'create-user': {
+            $fullName = trim((string) ($data['full_name'] ?? ''));
+            $username = trim((string) ($data['username'] ?? ''));
+            $email = trim((string) ($data['email'] ?? ''));
+            $phone = trim((string) ($data['phone'] ?? ''));
+            $role = ($data['role'] ?? '') === 'CUSTOMER' ? 'CUSTOMER' : (($data['role'] ?? '') === 'STAFF' ? 'STAFF' : null);
+            $password = (string) ($data['password'] ?? '');
+            $password2 = (string) ($data['password2'] ?? '');
+
+            if ($fullName === '' || mb_strlen($fullName) > 120) {
+                json_out(['ok' => false, 'message' => 'Please provide a full name (max 120 characters).'], 422);
+            }
+            if (!preg_match('/^[a-zA-Z0-9._]{3,30}$/', $username)) {
+                json_out(['ok' => false, 'message' => 'Username must be 3-30 letters, numbers, dots, or underscores.'], 422);
+            }
+            if (!filter_var($email, FILTER_VALIDATE_EMAIL) || mb_strlen($email) > 160) {
+                json_out(['ok' => false, 'message' => 'Please provide a valid email address.'], 422);
+            }
+            if (mb_strlen($phone) > 30) {
+                json_out(['ok' => false, 'message' => 'Phone number is too long (max 30 characters).'], 422);
+            }
+            if ($role === null) {
+                json_out(['ok' => false, 'message' => 'Role must be CUSTOMER or STAFF.'], 422);
+            }
+
+            $counterId = null;
+            if ($role === 'STAFF') {
+                $counterId = !empty($data['counter_id']) && (int) $data['counter_id'] > 0 ? (int) $data['counter_id'] : null;
+                if ($counterId !== null && !fetch_one('SELECT id FROM counters WHERE id = ? AND is_active = 1', [$counterId])) {
+                    json_out(['ok' => false, 'message' => 'The chosen counter does not exist.'], 422);
+                }
+            }
+
+            $pwErr = validate_password_strength($password, $password2);
+            if ($pwErr !== null) {
+                json_out(['ok' => false, 'message' => $pwErr], 422);
+            }
+
+            if (fetch_one('SELECT id FROM users WHERE username = ?', [$username])) {
+                json_out(['ok' => false, 'message' => 'That username is already taken.'], 422);
+            }
+            if (fetch_one('SELECT id FROM users WHERE email = ?', [$email])) {
+                json_out(['ok' => false, 'message' => 'That email is already registered.'], 422);
+            }
+
+            $hash = password_hash($password, PASSWORD_DEFAULT);
+            exec_write(
+                'INSERT INTO users (full_name, username, email, phone, password, role, status, counter_id)
+                 VALUES (?, ?, ?, ?, ?, ?, "ACTIVE", ?)',
+                [$fullName, $username, $email, $phone !== '' ? $phone : null, $hash, $role, $counterId]
+            );
+            log_activity('USER_CREATED', "Created {$role} account {$username}" . ($counterId ? " on counter #{$counterId}" : ''), (int) $user['id']);
+            json_out(['ok' => true, 'message' => 'Account created and activated.']);
+        }
+
         default:
             json_out(['ok' => false, 'message' => 'Unknown action.'], 404);
     }

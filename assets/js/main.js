@@ -22,6 +22,8 @@
     check: '<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>',
     alert: '<path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>',
     x: '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',
+    eye: '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>',
+    'eye-off': '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>',
     logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>',
     menu: '<line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>'
   };
@@ -76,12 +78,37 @@
     if (email && email.value.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.value.trim())) {
       errors[email.name] = 'Enter a valid email address.';
     }
-    const pass = form.querySelector('[name="password"]');
-    const pass2 = form.querySelector('[name="password2"]');
-    if (pass && pass2 && pass.value && pass.value !== pass2.value) {
-      errors[pass2.name] = 'Passwords do not match.';
+    if (form.hasAttribute('data-pw-rules')) {
+      const pass = form.querySelector('[name="password"]');
+      const pass2 = form.querySelector('[name="password2"]');
+      if (pass && pass.value && !pass2.value) {
+        errors[pass2.name] = 'Please repeat the password.';
+      }
+      if (pass && pass.value) {
+        const reason = window.weakPassword(pass.value);
+        if (reason) errors[pass.name] = reason;
+        else if (pass2 && pass.value !== pass2.value) errors[pass2.name] = 'Passwords do not match.';
+      }
+    } else {
+      const pass = form.querySelector('[name="password"]');
+      const pass2 = form.querySelector('[name="password2"]');
+      if (pass && pass2 && pass.value && pass.value !== pass2.value) {
+        errors[pass2.name] = 'Passwords do not match.';
+      }
     }
     return errors;
+  };
+
+  // Returns a message when a password is too weak, else null. Mirrors the
+  // server-side policy in validate_password_strength() (includes/queue.php).
+  window.weakPassword = function (value) {
+    if (!value) return 'Choose a password.';
+    if (value.length < 8) return 'Password must be at least 8 characters.';
+    if (!/[a-z]/.test(value)) return 'Add at least one lowercase letter.';
+    if (!/[A-Z]/.test(value)) return 'Add at least one uppercase letter.';
+    if (!/\d/.test(value)) return 'Add at least one number.';
+    if (!/[^A-Za-z0-9]/.test(value)) return 'Add at least one special character (e.g. ! @ # $).';
+    return null;
   };
 
   window.applyFormErrors = function (form, errors) {
@@ -89,11 +116,60 @@
       const key = el.name || el.id;
       const isErr = !!errors[key];
       el.classList.toggle('is-error', isErr);
+      el.closest('.field')?.classList.toggle('has-error', isErr);
       const help = el.parentElement?.querySelector('.input-error');
       if (help) { help.textContent = errors[key] || ''; help.style.display = isErr ? 'block' : 'none'; }
     });
     return Object.keys(errors).length === 0;
   };
+
+  // Live password-requirements checklist: a form marked data-pw-rules whose
+  // password field has a sibling `ul.pw-rules[data-pw-list]` of li[data-pw].
+  window.bindPasswordRules = function (scope) {
+    const root = scope || document;
+    root.querySelectorAll('[data-pw-rules]').forEach((form) => {
+      const pass = form.querySelector('[name="password"]');
+      const pass2 = form.querySelector('[name="password2"]');
+      const list = form.querySelector('[data-pw-list]');
+      if (!pass || !list) return;
+      const refresh = () => {
+        const v = pass.value;
+        const flags = {
+          len: v.length >= 8,
+          upper: /[A-Z]/.test(v),
+          lower: /[a-z]/.test(v),
+          digit: /\d/.test(v),
+          special: /[^A-Za-z0-9]/.test(v),
+          match: pass2 ? (v !== '' && v === pass2.value) : v.length >= 8,
+        };
+        list.querySelectorAll('li[data-pw]').forEach((li) => {
+          li.classList.toggle('ok', !!flags[li.dataset.pw]);
+        });
+        // Keep the confirm field in sync: match can't be true while it's empty.
+        if (pass2 && pass2.value) list.querySelector('li[data-pw="match"]')?.classList.toggle('ok', v !== '' && v === pass2.value);
+        else list.querySelector('li[data-pw="match"]')?.classList.remove('ok');
+      };
+      pass.addEventListener('input', refresh);
+      if (pass2) pass2.addEventListener('input', refresh);
+      refresh();
+    });
+  };
+
+  // Show/hide password toggles — any [data-pw-for] button toggles the named input.
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-pw-for]');
+    if (!btn) return;
+    const input = document.getElementById(btn.dataset.pwFor);
+    if (!input) return;
+    const show = input.type === 'password';
+    input.type = show ? 'text' : 'password';
+    btn.setAttribute('aria-pressed', show ? 'true' : 'false');
+    btn.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+    const icon = btn.querySelector('.svg-icon');
+    if (icon) btn.innerHTML = window.icon(show ? 'eye-off' : 'eye', 18);
+    input.focus();
+    try { input.setSelectionRange(input.value.length, input.value.length); } catch (e) { /* not text-like — ignore */ }
+  });
 
   window.highlightFlash = function () {
     const a = document.querySelector('.alert');

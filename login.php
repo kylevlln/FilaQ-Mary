@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/config/config.php';
+require_once __DIR__ . '/includes/queue.php';
 require_once __DIR__ . '/includes/icons.php';
 
 if (current_user() !== null) {
@@ -13,13 +14,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $username = trim($_POST['username'] ?? '');
     $password = $_POST['password'] ?? '';
 
-    if ($username === '' || $password === '') {
+    $lockSeconds = login_lock_seconds();
+    if ($lockSeconds > 0) {
+        $error = sprintf(
+            'Too many failed attempts. Try again in %dm %ds.',
+            intdiv($lockSeconds, 60),
+            $lockSeconds % 60
+        );
+    } elseif ($username === '' || $password === '') {
         $error = 'Please enter both your username and password.';
     } else {
         try {
             $user = fetch_one('SELECT * FROM users WHERE username = ? OR email = ?', [$username, $username]);
             if (!$user || !password_verify($password, $user['password'])) {
-                $error = 'Incorrect username or password.';
+                record_failed_login();
+                $lockSeconds = login_lock_seconds();
+                if ($lockSeconds > 0) {
+                    $error = sprintf(
+                        'Too many failed attempts. Try again in %dm %ds.',
+                        intdiv($lockSeconds, 60),
+                        $lockSeconds % 60
+                    );
+                } else {
+                    $error = 'Incorrect username or password.';
+                }
             } elseif ($user['status'] === 'SUSPENDED') {
                 $error = 'This account has been suspended. Contact an administrator.';
             } elseif ($user['status'] === 'PENDING') {
@@ -27,6 +45,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } elseif ($user['status'] === 'INACTIVE') {
                 $error = 'This account is inactive. Contact an administrator.';
             } else {
+                clear_failed_logins();
                 session_regenerate_id(true);
                 $_SESSION['user_id'] = (int) $user['id'];
                 exec_write('UPDATE users SET last_login = NOW() WHERE id = ?', [(int) $user['id']]);
@@ -48,7 +67,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Sign in · <?php echo APP_NAME; ?></title>
-<link rel="stylesheet" href="assets/css/style.css?v=4">
+<link rel="stylesheet" href="assets/css/style.css?v=5">
 </head>
 <body>
 <div class="auth-shell">
@@ -71,7 +90,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       </div>
       <div class="field">
         <label for="password">Password</label>
-        <input class="input" type="password" id="password" name="password" required autocomplete="current-password">
+        <div class="pw-wrap">
+          <input class="input" type="password" id="password" name="password" required autocomplete="current-password">
+          <button class="pw-toggle" type="button" data-pw-for="password" aria-label="Show password" aria-pressed="false" aria-controls="password"><?php echo icon('eye'); ?></button>
+        </div>
         <span class="input-error" role="alert"></span>
       </div>
       <button class="btn btn-primary btn-block btn-lg" type="submit">Sign in</button>

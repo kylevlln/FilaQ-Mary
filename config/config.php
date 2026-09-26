@@ -27,16 +27,42 @@ define('APP_VERSION', '1.0.0');
 
 /**
  * Site-relative URL root (e.g. "/FilaQ-Mary", or "" when the app is installed
- * directly at the document root). Derived from the filesystem position of the
- * app relative to DOCUMENT_ROOT so redirects work from every subfolder — a
- * plain relative redirect like "login.php" would resolve to "/admin/login.php"
- * when a session expires on an admin page, which 404s.
+ * directly at the document root). Worked out from the CURRENT request so it
+ * keeps working even when the app is reached through a symlink/junction
+ * (e.g. an XAMPP htdocs subfolder that really lives on another drive):
+ * realpath(DOCUMENT_ROOT) would not share a prefix with the app folder then,
+ * so instead we count how many directories the current script sits below the
+ * app root (filesystem, junction-resolved) and strip that many path segments
+ * off the script's URL. Redirects therefore work from every subfolder — a
+ * plain relative redirect like "login.php" would resolve to
+ * "/admin/login.php" when a session expires on an admin page, which 404s.
  */
-$appRootReal = realpath(BASE_PATH) ?: '';
-$docRootReal = realpath($_SERVER['DOCUMENT_ROOT'] ?? '') ?: '';
 $webRoot = '';
-if ($appRootReal !== '' && $docRootReal !== '' && str_starts_with($appRootReal, $docRootReal)) {
-    $webRoot = rtrim(str_replace('\\', '/', substr($appRootReal, strlen($docRootReal))), '/');
+$scriptName = $_SERVER['SCRIPT_NAME'] ?? '';
+$scriptFile = $_SERVER['SCRIPT_FILENAME'] ?? '';
+if ($scriptName !== '' && $scriptFile !== '') {
+    $baseReal = realpath(BASE_PATH) ?: '';
+    $dirReal = realpath(dirname($scriptFile)) ?: '';
+    $depth = 0;
+    if ($baseReal !== '' && $dirReal !== '') {
+        $baseNorm = str_replace('\\', '/', strtolower($baseReal));
+        $dirNorm = str_replace('\\', '/', strtolower($dirReal));
+        if (str_starts_with($dirNorm, $baseNorm)) {
+            $after = substr($dirNorm, strlen($baseNorm));
+            if ($after === '' || str_starts_with($after, '/')) {
+                $depth = $after === '' ? 0 : substr_count(trim($after, '/'), '/') + 1;
+            }
+        }
+    }
+    $segments = array_values(array_filter(explode('/', str_replace('\\', '/', dirname($scriptName))), fn($s) => $s !== ''));
+    if (count($segments) > $depth) {
+        $segments = array_slice($segments, 0, count($segments) - $depth);
+    } else {
+        $segments = [];
+    }
+    if ($segments) {
+        $webRoot = '/' . implode('/', $segments);
+    }
 }
 define('APP_ROOT_URL', $webRoot);
 

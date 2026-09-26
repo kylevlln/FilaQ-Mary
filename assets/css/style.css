@@ -278,6 +278,60 @@ textarea.input { min-height: 96px; resize: vertical; }
 
 .input-error { display: none; margin-top: .35rem; font-size: var(--fs-xs); color: var(--bad); }
 .input.is-error + .input-error, .input[aria-invalid="true"] + .input-error { display: block; }
+/* errors inside a wrapped field (pw-wrap sits between input and its span) */
+.field.has-error .input-error { display: block; }
+
+/* Password show/hide toggle */
+.pw-wrap { position: relative; }
+.pw-wrap .input { padding-right: 3rem; }
+.pw-toggle {
+  position: absolute;
+  top: 50%;
+  right: .35rem;
+  transform: translateY(-50%);
+  width: 2.4rem;
+  height: 2.4rem;
+  display: grid;
+  place-items: center;
+  color: var(--ink-3);
+  background: none;
+  border: none;
+  border-radius: var(--r-xs);
+  cursor: pointer;
+  transition: color var(--t-f) var(--ease), background var(--t-f) var(--ease);
+}
+.pw-toggle:hover { color: var(--acc-deep); background: var(--acc-tint); }
+.pw-toggle[aria-pressed="true"] { color: var(--acc-deep); }
+
+/* Live password-requirements checklist */
+.pw-rules {
+  list-style: none;
+  margin: .5rem 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+  gap: .2rem .8rem;
+}
+.pw-rules li {
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+  transition: color var(--t-f) var(--ease);
+}
+.pw-rules li::before {
+  content: "";
+  width: .52rem;
+  height: .52rem;
+  flex: none;
+  border-radius: 50%;
+  border: 1px solid var(--line-2);
+  background: var(--surface-2);
+  transition: background var(--t-f) var(--ease), border-color var(--t-f) var(--ease);
+}
+.pw-rules li.ok { color: var(--ok); }
+.pw-rules li.ok::before { background: var(--ok); border-color: var(--ok); }
 
 /* grouped fields (registration, settings) */
 .field-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0 var(--s-5); }

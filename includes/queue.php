@@ -18,6 +18,83 @@ function setting(string $key, ?string $default = null): ?string
 }
 
 /* ------------------------------------------------------------------ *
+ *  Authentication helpers
+ * ------------------------------------------------------------------ */
+
+/** New-account password rules shared by register.php and the admin
+ *  "add user" flow so both enforce exactly the same policy. */
+function validate_password_strength(string $password, string $confirm): ?string
+{
+    if ($password === '') {
+        return 'Choose a password.';
+    }
+    if (strlen($password) < 8) {
+        return 'Password must be at least 8 characters.';
+    }
+    if (!preg_match('/[a-z]/', $password)) {
+        return 'Password needs at least one lowercase letter.';
+    }
+    if (!preg_match('/[A-Z]/', $password)) {
+        return 'Password needs at least one uppercase letter.';
+    }
+    if (!preg_match('/\d/', $password)) {
+        return 'Password needs at least one number.';
+    }
+    if (!preg_match('/[^A-Za-z0-9]/', $password)) {
+        return 'Password needs at least one special character (e.g. ! @ # $).';
+    }
+    if ($password !== $confirm) {
+        return 'Passwords do not match.';
+    }
+    return null;
+}
+
+/**
+ * Login throttle, backed by the rate_limits table (unique ip+action).
+ * Returns the number of seconds left in the lock-out window, or 0 when
+ * the caller may try again. Locked = 5+ failed attempts inside 5 minutes.
+ */
+function login_lock_seconds(): int
+{
+    $ip = $_SERVER['REMOTE_ADDR'] ?? 'local';
+    $row = fetch_one(
+        'SELECT count, window_start FROM rate_limits WHERE ip_address = ? AND action = "login"',
+        [$ip]
+    );
+    if ($row === null) {
+        return 0;
+    }
+    $elapsed = time() - strtotime($row['window_start']);
+    if ($elapsed >= 300) {
+        return 0;
+    }
+    if ((int) $row['count'] >= 5) {
+        return 300 - $elapsed;
+    }
+    return 0;
+}
+
+/** Record a failed login (atomic reset when the window has expired). */
+function record_failed_login(): void
+{
+    $ip = $_SERVER['REMOTE_ADDR'] ?? 'local';
+    db()->prepare(
+        'INSERT INTO rate_limits (ip_address, action, count, window_start)
+         VALUES (?, "login", 1, NOW())
+         ON DUPLICATE KEY UPDATE
+           count         = IF(window_start < NOW() - INTERVAL 5 MINUTE, 1, count + 1),
+           window_start  = IF(window_start < NOW() - INTERVAL 5 MINUTE, NOW(), window_start)'
+    )->execute([$ip]);
+}
+
+/** Clear failed-login tracking after a successful sign-in. */
+function clear_failed_logins(): void
+{
+    $ip = $_SERVER['REMOTE_ADDR'] ?? 'local';
+    exec_write('DELETE FROM rate_limits WHERE ip_address = ? AND action = "login"', [$ip]);
+}
+
+/* ------------------------------------------------------------------ *
  *  Ticket numbering
  * ------------------------------------------------------------------ */
 
